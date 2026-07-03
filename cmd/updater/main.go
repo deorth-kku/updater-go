@@ -83,7 +83,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Create HTTP downloader for metadata
-	httpDL := api.NewHTTPClient(0)
+	httpDL := api.NewHTTPClientWithProxy(0, cfg.Requests.Proxy)
 
 	// Load metadata from repositories
 	if len(cfg.Repositories) > 0 {

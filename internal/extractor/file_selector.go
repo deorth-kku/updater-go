@@ -9,17 +9,19 @@ import (
 
 // FileSelector filters files based on keywords, exclude keywords, and file type.
 type FileSelector struct {
-	Keywords        []string
-	ExcludeKeywords []string
-	Filetype        string
+	Keywords                  []string
+	ExcludeKeywords           []string
+	Filetype                  string
+	ExcludeFileTypeWhenUpdate []string
 }
 
-// NewFileSelector creates a FileSelector from the download config.
-func NewFileSelector(cfg config.DownloadConfig) *FileSelector {
+// NewFileSelector creates a FileSelector from the download and decompress configs.
+func NewFileSelector(dlCfg config.DownloadConfig, dcCfg config.DecompressConfig) *FileSelector {
 	return &FileSelector{
-		Keywords:        platform.ExpandKeywords(cfg.Keyword),
-		ExcludeKeywords: platform.ExpandKeywords(cfg.ExcludeKeyword),
-		Filetype:        cfg.Filetype.First(),
+		Keywords:                  platform.ExpandKeywords(dlCfg.Keyword),
+		ExcludeKeywords:           platform.ExpandKeywords(dlCfg.ExcludeKeyword),
+		Filetype:                  dlCfg.Filetype.First(),
+		ExcludeFileTypeWhenUpdate: dcCfg.ExcludeFileTypeWhenUpdate,
 	}
 }
 
@@ -38,6 +40,13 @@ func (fs *FileSelector) Match(name string) bool {
 	// Check exclude keywords (any match → reject)
 	for _, ek := range fs.ExcludeKeywords {
 		if strings.Contains(nameLower, strings.ToLower(ek)) {
+			return false
+		}
+	}
+
+	// Check exclude file types when updating (any match → reject)
+	for _, ext := range fs.ExcludeFileTypeWhenUpdate {
+		if strings.HasSuffix(nameLower, strings.ToLower(ext)) {
 			return false
 		}
 	}

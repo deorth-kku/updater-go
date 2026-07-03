@@ -222,7 +222,13 @@ func TestExtract_SingleDir(t *testing.T) {
 	// With single_dir=true, files should be extracted directly to destDir
 	// (the inner dir content is moved up)
 	if _, err := os.Stat(filepath.Join(destDir, "app-v1.0")); err == nil {
-		t.Log("single_dir mode: inner dir still exists (implementation pending)")
+		t.Error("single_dir mode: inner dir should have been moved up")
+	}
+	if content, err := os.ReadFile(filepath.Join(destDir, "bin/app")); err != nil || string(content) != "binary" {
+		t.Errorf("bin/app: content = %q, err = %v", content, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(destDir, "readme.txt")); err != nil || string(content) != "readme" {
+		t.Errorf("readme.txt: content = %q, err = %v", content, err)
 	}
 }
 
@@ -245,7 +251,10 @@ func TestExtract_CleanInstall(t *testing.T) {
 
 	// old-file.txt should be removed with clean_install
 	if _, err := os.Stat(filepath.Join(destDir, "old-file.txt")); err == nil {
-		t.Log("clean_install mode: old file still exists (implementation pending)")
+		t.Error("clean_install mode: old file should have been removed")
+	}
+	if content, err := os.ReadFile(filepath.Join(destDir, "new-file.txt")); err != nil || string(content) != "new" {
+		t.Errorf("new-file.txt: content = %q, err = %v", content, err)
 	}
 }
 

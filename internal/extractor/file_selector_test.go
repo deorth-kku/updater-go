@@ -76,7 +76,7 @@ func TestFileSelector_SelectFiles(t *testing.T) {
 		Keyword:        config.StringOrSlice{"win", "vulkan"},
 		Filetype:       config.StringOrSlice{"zip"},
 		ExcludeKeyword: config.StringOrSlice{"cudart"},
-	})
+	}, config.DecompressConfig{})
 
 	input := []string{
 		"llama-win-vulkan.zip",
@@ -100,12 +100,42 @@ func TestNewFileSelector_ExpandKeywords(t *testing.T) {
 	fs := NewFileSelector(config.DownloadConfig{
 		Keyword:  config.StringOrSlice{"%arch", "release"},
 		Filetype: config.StringOrSlice{"zip"},
-	})
+	}, config.DecompressConfig{})
 
 	if len(fs.Keywords) != 2 {
 		t.Fatalf("Keywords len = %d, want 2", len(fs.Keywords))
 	}
 	if fs.Keywords[0] == "%arch" {
 		t.Errorf("Keywords[0] not expanded, still %s", fs.Keywords[0])
+	}
+}
+
+func TestFileSelector_ExcludeFileTypeWhenUpdate(t *testing.T) {
+	fs := NewFileSelector(
+		config.DownloadConfig{
+			Keyword:  config.StringOrSlice{"app"},
+			Filetype: config.StringOrSlice{"zip"},
+		},
+		config.DecompressConfig{
+			ExcludeFileTypeWhenUpdate: []string{".sig", ".sha256"},
+		},
+	)
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"app-v1.0.zip", true},
+		{"app-v1.0.zip.sig", false},
+		{"app-v1.0.zip.sha256", false},
+		{"other-v1.0.zip", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fs.Match(tt.name); got != tt.want {
+				t.Errorf("Match(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
 	}
 }

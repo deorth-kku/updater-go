@@ -13,7 +13,7 @@ type Release struct {
 	URL       string
 	Version   string
 	Assets    []Asset
-	Artifacts []appveyorArtifact
+	Artifacts []AppveyorArtifact
 	JobID     string
 	BaseURL   string
 }
@@ -30,12 +30,16 @@ type API interface {
 }
 
 // NewAPI creates the appropriate API adapter based on the project config.
-func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader) (API, error) {
+func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, buildCfg config.BuildConfig, dl Downloader) (API, error) {
 	switch cfg.APIType {
 	case "github":
-		return NewGitHubAPI(cfg, dl), nil
+		api := NewGitHubAPI(cfg, dl)
+		api.SetNoPull(buildCfg.NoPull)
+		return api, nil
 	case "appveyor":
-		return NewAppveyorAPI(cfg, dl), nil
+		api := NewAppveyorAPI(cfg, dl)
+		api.SetBranch(buildCfg.Branch)
+		return api, nil
 	case "sourceforge":
 		return NewSourceforgeAPI(cfg, dl), nil
 	case "simplespider":

@@ -117,7 +117,7 @@ func TestAppveyorAPI_Latest(t *testing.T) {
 			Jobs: []appveyorJob{{Name: "release", ID: "job-123"}},
 		},
 	}
-	artifacts := []appveyorArtifact{{FileName: "rpcs3-win64-vulkan.zip"}}
+	artifacts := []AppveyorArtifact{{FileName: "rpcs3-win64-vulkan.zip"}}
 
 	mdl := newMockDownloader()
 	hBody, _ := json.Marshal(history)
@@ -233,9 +233,82 @@ func TestDictPathGet(t *testing.T) {
 }
 
 func TestNewAPI_UnknownType(t *testing.T) {
-	_, err := NewAPI(config.BasicConfig{APIType: "unknown"}, config.DownloadConfig{}, config.VersionConfig{}, nil)
+	_, err := NewAPI(config.BasicConfig{APIType: "unknown"}, config.DownloadConfig{}, config.VersionConfig{}, config.BuildConfig{}, nil)
 	if err == nil {
 		t.Error("NewAPI() expected error for unknown api_type")
+	}
+}
+
+func TestGitHubAPI_NoPull(t *testing.T) {
+	latestRelease := githubRelease{
+		TagName: "v3.0.0",
+		Name:    "Latest Release",
+		Assets: []githubAsset{
+			{Name: "app-v3.0.0.zip", BrowserDownloadURL: "https://github.com/releases/latest.zip"},
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(latestRelease)
+	mdl.On("/repos/test/project/releases/latest", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewGitHubAPI(config.BasicConfig{
+		AccountName: "test",
+		ProjectName: "project",
+	}, mdl)
+	api.SetNoPull(true)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.Version != "v3.0.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "v3.0.0")
+	}
+}
+
+func TestAppveyorAPI_BranchFilter(t *testing.T) {
+	history := appveyorHistory{
+		Builds: []struct {
+			Version       string `json:"version"`
+			PullRequestID string `json:"pullRequestId"`
+		}{
+			{Version: "1.0.0", PullRequestID: ""},
+		},
+	}
+	buildDetail := appveyorBuildDetail{
+		Build: struct {
+			Jobs    []appveyorJob `json:"jobs"`
+			Updated string        `json:"updated"`
+		}{
+			Jobs: []appveyorJob{{Name: "release", ID: "job-123"}},
+		},
+	}
+	artifacts := []AppveyorArtifact{{FileName: "app.zip"}}
+
+	mdl := newMockDownloader()
+	hBody, _ := json.Marshal(history)
+	bBody, _ := json.Marshal(buildDetail)
+	aBody, _ := json.Marshal(artifacts)
+	mdl.On("/api/projects/test/project/history", &HTTPResponse{StatusCode: 200, Body: hBody})
+	mdl.On("/api/projects/test/project/build/1.0.0", &HTTPResponse{StatusCode: 200, Body: bBody})
+	mdl.On("/api/buildjobs/job-123/artifacts", &HTTPResponse{StatusCode: 200, Body: aBody})
+
+	api := NewAppveyorAPI(config.BasicConfig{
+		AccountName: "test",
+		ProjectName: "project",
+	}, mdl)
+	api.SetBranch("main")
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.Version != "1.0.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "1.0.0")
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -29,14 +31,39 @@ type httpClient struct {
 
 // NewHTTPClient returns a Downloader with sensible defaults.
 func NewHTTPClient(timeout time.Duration) Downloader {
+	return NewHTTPClientWithProxy(timeout, "")
+}
+
+// NewHTTPClientWithProxy returns a Downloader with the given proxy URL.
+func NewHTTPClientWithProxy(timeout time.Duration, proxyURL string) Downloader {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
+	transport := &http.Transport{}
+	if proxyURL != "" {
+		transport.Proxy = http.ProxyURL(parseProxyURL(proxyURL))
+	}
 	return &httpClient{
 		client: &http.Client{
-			Timeout: timeout,
+			Timeout:   timeout,
+			Transport: transport,
 		},
 	}
+}
+
+// parseProxyURL normalizes a proxy URL string. If it lacks a scheme, "http://" is prepended.
+func parseProxyURL(raw string) *url.URL {
+	if raw == "" {
+		return nil
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return u
 }
 
 func (h *httpClient) Get(ctx context.Context, url string) (*HTTPResponse, error) {

@@ -67,7 +67,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	result.OldVersion = u.projectCfg.CurrentVersion
 
 	// Step 1: Detect latest version via API
-	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.httpDL)
+	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL)
 	if err != nil {
 		result.Error = fmt.Errorf("create api: %w", err)
 		return result
@@ -113,6 +113,13 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 				return result
 			}
 			result.Extracted = true
+
+			// Delete archive unless keep_download_file is true
+			if !u.projectCfg.Decompress.KeepDownloadFile {
+				if err := os.Remove(localPath); err != nil {
+					u.logger.Warn("failed to remove download file", "project", result.ProjectName, "error", err)
+				}
+			}
 		}
 	}
 
@@ -236,22 +243,51 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		return u.projectCfg.Download.URL
 	}
 
-	// For GitHub releases, filter assets by keywords
+	// For GitHub releases, filter assets by keywords and index
 	if len(rel.Assets) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download)
-		for _, a := range rel.Assets {
-			if fs.Match(a.Name) {
-				return a.URL
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress)
+		matched := fs.SelectFiles(assetNames(rel.Assets))
+		// Apply index/indexes filtering
+		if len(u.projectCfg.Download.Indexes) > 0 {
+			var indexed []string
+			for _, idx := range u.projectCfg.Download.Indexes {
+				if idx >= 0 && idx < len(matched) {
+					indexed = append(indexed, matched[idx])
+				}
+			}
+			matched = indexed
+		} else if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index <= len(matched) {
+			matched = matched[u.projectCfg.Download.Index-1:]
+		}
+		for _, name := range matched {
+			for _, a := range rel.Assets {
+				if a.Name == name {
+					return a.URL
+				}
 			}
 		}
 	}
 
 	// For AppVeyor artifacts
 	if len(rel.Artifacts) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download)
-		for _, art := range rel.Artifacts {
-			if fs.Match(art.FileName) {
-				return rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + art.FileName
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress)
+		matched := fs.SelectFiles(artifactNames(rel.Artifacts))
+		if len(u.projectCfg.Download.Indexes) > 0 {
+			var indexed []string
+			for _, idx := range u.projectCfg.Download.Indexes {
+				if idx >= 0 && idx < len(matched) {
+					indexed = append(indexed, matched[idx])
+				}
+			}
+			matched = indexed
+		} else if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index <= len(matched) {
+			matched = matched[u.projectCfg.Download.Index-1:]
+		}
+		for _, name := range matched {
+			for _, art := range rel.Artifacts {
+				if art.FileName == name {
+					return rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + art.FileName
+				}
 			}
 		}
 	}
@@ -264,12 +300,32 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 	return ""
 }
 
+// assetNames returns the names of all assets.
+func assetNames(assets []api.Asset) []string {
+	names := make([]string, len(assets))
+	for i, a := range assets {
+		names[i] = a.Name
+	}
+	return names
+}
+
+// artifactNames returns the file names of all artifacts.
+func artifactNames(artifacts []api.AppveyorArtifact) []string {
+	names := make([]string, len(artifacts))
+	for i, a := range artifacts {
+		names[i] = a.FileName
+	}
+	return names
+}
+
 // downloadFilename determines the filename for the download.
 func (u *Updater) downloadFilename(version, dlURL string) string {
 	if u.projectCfg.Download.FilenameOverride != "" {
 		name := u.projectCfg.Download.FilenameOverride
 		if u.projectCfg.Download.AddVersionToFilename {
 			name = strings.ReplaceAll(name, "{version}", version)
+			name = strings.ReplaceAll(name, "%arch", runtime.GOARCH)
+			name = strings.ReplaceAll(name, "%OS", runtime.GOOS)
 		}
 		return name
 	}

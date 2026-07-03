@@ -12,6 +12,7 @@ import (
 type GitHubAPI struct {
 	accountName string
 	projectName string
+	noPull      bool
 	downloader  Downloader
 }
 
@@ -20,18 +21,39 @@ func NewGitHubAPI(cfg config.BasicConfig, dl Downloader) *GitHubAPI {
 	return &GitHubAPI{
 		accountName: cfg.AccountName,
 		projectName: cfg.ProjectName,
+		noPull:      false,
 		downloader:  dl,
 	}
 }
 
+// SetNoPull enables no-pull mode (uses /releases/latest instead of /releases).
+func (g *GitHubAPI) SetNoPull(noPull bool) {
+	g.noPull = noPull
+}
+
 func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
+	var url string
+	if g.noPull {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", g.accountName, g.projectName)
+	} else {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
+	}
+
 	resp, err := g.downloader.Get(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("github releases: %w", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("github releases returned status %d: %s", resp.StatusCode, string(resp.Body))
+	}
+
+	if g.noPull {
+		// Single release response
+		var rel githubRelease
+		if err := unmarshalJSON(resp.Body, &rel); err != nil {
+			return nil, fmt.Errorf("parse github release: %w", err)
+		}
+		return g.buildRelease(rel), nil
 	}
 
 	var releases []githubRelease

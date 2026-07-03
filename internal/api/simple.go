@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -123,10 +125,32 @@ func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string) 
 }
 
 func (s *SimpleSpiderAPI) fetchPage(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.pageURL, nil)
-	if err != nil {
-		return "", err
+	var bodyReader io.Reader
+
+	// If Data is configured, use POST with JSON body
+	if len(s.dlCfg.Data) > 0 {
+		jsonBody, err := json.Marshal(s.dlCfg.Data)
+		if err != nil {
+			return "", fmt.Errorf("marshal data: %w", err)
+		}
+		bodyReader = bytes.NewReader(jsonBody)
 	}
+
+	var req *http.Request
+	var reqErr error
+	if bodyReader != nil {
+		req, reqErr = http.NewRequestWithContext(ctx, http.MethodPost, s.pageURL, bodyReader)
+		if reqErr != nil {
+			return "", reqErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+	} else {
+		req, reqErr = http.NewRequestWithContext(ctx, http.MethodGet, s.pageURL, nil)
+		if reqErr != nil {
+			return "", reqErr
+		}
+	}
+
 	for k, v := range s.headers {
 		req.Header.Set(k, v)
 	}

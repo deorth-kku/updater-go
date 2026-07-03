@@ -31,7 +31,20 @@ func (e *Extractor) Extract(srcPath, destDir string) error {
 		return nil
 	}
 
+	// clean_install: remove existing files in dest before extraction
+	if e.cfg.CleanInstall {
+		if err := cleanInstall(destDir); err != nil {
+			return fmt.Errorf("clean_install: %w", err)
+		}
+	}
+
 	ext := detectExt(srcPath)
+
+	// single_dir: extract to temp dir, then move contents up if single subdirectory
+	if e.cfg.SingleDir.Bool() {
+		return e.extractWithSingleDir(srcPath, destDir)
+	}
+
 	switch ext {
 	case ".zip":
 		return e.extractZip(srcPath, destDir)
@@ -45,6 +58,118 @@ func (e *Extractor) Extract(srcPath, destDir string) error {
 		// For .exe, .apk, .dmg, etc. — just copy the file
 		return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
 	}
+}
+
+// extractWithSingleDir extracts to a temp dir, then if there's exactly one
+// subdirectory at the top level, moves its contents into destDir.
+func (e *Extractor) extractWithSingleDir(srcPath, destDir string) error {
+	tmpDir, err := os.MkdirTemp("", "updater-extract-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Extract into temp dir
+	ext := detectExt(srcPath)
+	switch ext {
+	case ".zip":
+		if err := e.extractZip(srcPath, tmpDir); err != nil {
+			return err
+		}
+	case ".tar.gz", ".tgz":
+		if err := e.extractTarGz(srcPath, tmpDir); err != nil {
+			return err
+		}
+	case ".tar.xz", ".txz":
+		if err := e.extractTarXz(srcPath, tmpDir); err != nil {
+			return err
+		}
+	case ".7z":
+		if err := e.extractSevenZ(srcPath, tmpDir); err != nil {
+			return err
+		}
+	default:
+		return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
+	}
+
+	// Detect single subdirectory
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return fmt.Errorf("read temp dir: %w", err)
+	}
+
+	var subDirs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			subDirs = append(subDirs, entry.Name())
+		}
+	}
+
+	if len(subDirs) == 1 {
+		// Single subdirectory: move its contents into destDir
+		src := filepath.Join(tmpDir, subDirs[0])
+		return moveDirContents(src, destDir)
+	}
+
+	// Multiple or no subdirectories: move everything into destDir
+	return moveDirContents(tmpDir, destDir)
+}
+
+// moveDirContents moves all contents from srcDir into destDir (without removing srcDir itself).
+func moveDirContents(srcDir, destDir string) error {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		src := filepath.Join(srcDir, entry.Name())
+		dst := filepath.Join(destDir, entry.Name())
+		if err := os.Rename(src, dst); err != nil {
+			// If rename fails (cross-device), fall back to copy+remove
+			if copyErr := copyDir(src, dst); copyErr != nil {
+				return fmt.Errorf("move %s: %w (copy fallback: %v)", src, err, copyErr)
+			}
+			os.RemoveAll(src)
+		}
+	}
+	return nil
+}
+
+// copyDir recursively copies a directory from src to dst.
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+		return copyFile(path, dstPath)
+	})
+}
+
+// cleanInstall removes all files and subdirectories inside destDir.
+func cleanInstall(destDir string) error {
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.MkdirAll(destDir, 0o755)
+		}
+		return err
+	}
+	for _, entry := range entries {
+		path := filepath.Join(destDir, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // detectExt detects the archive extension, handling compound extensions like .tar.gz.

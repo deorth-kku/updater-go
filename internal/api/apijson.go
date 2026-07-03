@@ -81,6 +81,14 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	version := "unknown"
+	// Use Version.Path to extract version from nested JSON
+	if len(a.verCfg.Path) > 0 {
+		val, err := dictPathGet(a.jsonData, a.verCfg.Path)
+		if err == nil && val != nil {
+			version = fmt.Sprintf("%v", val)
+		}
+	}
+
 	dlURL, err := a.buildDownloadURL()
 	if err != nil {
 		return nil, err

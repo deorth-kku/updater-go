@@ -82,7 +82,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 			continue
 		}
 
-		var artifacts []appveyorArtifact
+		var artifacts []AppveyorArtifact
 		if err := unmarshalJSON(artResp.Body, &artifacts); err != nil {
 			continue
 		}
@@ -146,6 +146,6 @@ type appveyorJob struct {
 	ID   string `json:"jobId"`
 }
 
-type appveyorArtifact struct {
+type AppveyorArtifact struct {
 	FileName string `json:"fileName"`
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/api"
@@ -238,5 +239,102 @@ func TestReplaceVars(t *testing.T) {
 		if result != tt.expected {
 			t.Errorf("replaceVars(%q) = %q, want %q", tt.input, result, tt.expected)
 		}
+	}
+}
+
+func TestDownloadFilename_ArchOS(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+		Download: config.DownloadConfig{
+			FilenameOverride:     "app-%arch-%OS.zip",
+			AddVersionToFilename: true,
+		},
+	}
+
+	u := &Updater{projectCfg: projCfg}
+	result := u.downloadFilename("1.0.0", "http://example.com/test.zip")
+
+	if result != "app-"+runtime.GOARCH+"-"+runtime.GOOS+".zip" {
+		t.Errorf("downloadFilename() = %q, want app-%s-%s.zip", result, runtime.GOARCH, runtime.GOOS)
+	}
+}
+
+func TestDownloadFilename_NoVersion(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+		Download: config.DownloadConfig{
+			FilenameOverride: "app.zip",
+		},
+	}
+
+	u := &Updater{projectCfg: projCfg}
+	result := u.downloadFilename("1.0.0", "http://example.com/test.zip")
+
+	if result != "app.zip" {
+		t.Errorf("downloadFilename() = %q, want %q", result, "app.zip")
+	}
+}
+
+func TestSelectDownloadURL_Index(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+		Download: config.DownloadConfig{
+			Keyword:  config.StringOrSlice{""},
+			Filetype: config.StringOrSlice{"7z"},
+			Index:    2,
+		},
+	}
+
+	rel := &api.Release{
+		Version: "v1.0.0",
+		Assets: []api.Asset{
+			{URL: "http://example.com/first.7z", Name: "app-first.7z"},
+			{URL: "http://example.com/second.7z", Name: "app-second.7z"},
+			{URL: "http://example.com/third.7z", Name: "app-third.7z"},
+		},
+	}
+
+	u := &Updater{projectCfg: projCfg}
+	result := u.selectDownloadURL(rel)
+
+	// Index 2 means second match (1-based)
+	if result != "http://example.com/second.7z" {
+		t.Errorf("selectDownloadURL() = %q, want %q", result, "http://example.com/second.7z")
+	}
+}
+
+func TestSelectDownloadURL_Indexes(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+		Download: config.DownloadConfig{
+			Keyword:  config.StringOrSlice{""},
+			Filetype: config.StringOrSlice{"zip"},
+			Indexes:  []int{0, 2},
+		},
+	}
+
+	rel := &api.Release{
+		Version: "v1.0.0",
+		Assets: []api.Asset{
+			{URL: "http://example.com/a.zip", Name: "a.zip"},
+			{URL: "http://example.com/b.zip", Name: "b.zip"},
+			{URL: "http://example.com/c.zip", Name: "c.zip"},
+		},
+	}
+
+	u := &Updater{projectCfg: projCfg}
+	result := u.selectDownloadURL(rel)
+
+	// Indexes [0, 2] means first and third match, first one wins
+	if result != "http://example.com/a.zip" {
+		t.Errorf("selectDownloadURL() = %q, want %q", result, "http://example.com/a.zip")
 	}
 }
