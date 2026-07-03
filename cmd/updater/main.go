@@ -109,38 +109,49 @@ func run(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Create HTTP downloader for metadata
-	httpDL := api.NewHTTPClientWithProxy(0, cfg.Requests.Proxy)
-
-	// Load metadata from repositories
-	if len(cfg.Repositories) > 0 {
-		metaStore := metadata.NewStore(cfg.Repositories, httpDL)
-		if err := metaStore.Load(ctx); err != nil {
-			logger.Warn("metadata load failed", "error", err)
-		} else {
-			// Use metadata to discover projects not in config
-			for name, entry := range metaStore.Entries() {
-				if !projectExists(cfg.Projects, name) {
-					logger.Info("discovered project from metadata", "name", name, "config_path", entry.ConfigPath)
-					cfg.Projects = append(cfg.Projects, config.ProjectEntry{
-						Name:     name,
-						SavePath: cfg.LocalDir,
-						Enabled:  true,
-					})
-				}
-			}
-		}
-	}
-
-	// Create aria2 downloader
+	// Create aria2 downloader with fallback to local aria2c subprocess
 	addr := cfg.Aria2.RPCAddr()
+
 	var aria2DL downloader.Downloader
-	aria2DL, err = downloader.NewAria2Downloader(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir)
+	var localAria2 *downloader.LocalAria2
+	aria2DL, localAria2, err = downloader.NewAria2DownloaderOrLocal(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir, cfg.Binaries.Aria2c, logger, cfg.Requests.GetTimeout())
 	if err != nil {
-		logger.Warn("aria2 connection failed, continuing without download", "error", err)
+		logger.Warn("aria2 connection failed", "error", err)
+		return err
 	}
 	if aria2DL != nil {
 		defer aria2DL.Close()
+	}
+
+	if localAria2 != nil {
+		defer localAria2.Stop()
+	}
+
+	// Create HTTP downloader for metadata
+	httpDL := api.NewHTTPClientWithProxy(cfg.Requests.GetTimeout(), cfg.Requests.Proxy)
+
+	// Load metadata from repositories
+	var metaStore *metadata.Store
+	if len(cfg.Repositories) > 0 {
+		metaStore = metadata.NewStore(cfg.Repositories, httpDL)
+		// Set local config directory for storing project configs
+		localConfigDir := filepath.Join(filepath.Dir(configPath), "config")
+		metaStore.SetLocalConfigDir(localConfigDir)
+
+		if err := metaStore.Load(ctx); err != nil {
+			logger.Error("metadata load failed", "error", err)
+			return err
+		}
+
+		// Ensure local configs are up-to-date for all projects
+		for _, proj := range cfg.Projects {
+			if !proj.Enabled {
+				continue
+			}
+			if err := metaStore.EnsureLocalConfig(ctx, proj.Name); err != nil {
+				logger.Warn("failed to ensure local config", "name", proj.Name, "error", err)
+			}
+		}
 	}
 
 	// Determine worker count

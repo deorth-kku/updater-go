@@ -5,12 +5,14 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"path/filepath"
 	"sync"
 	"time"
 
 	aria2 "github.com/deorth-kku/aria2rpc-go"
+	"github.com/filecoin-project/go-jsonrpc"
 )
 
 // Downloader is the interface for file downloads.
@@ -29,7 +31,7 @@ type Aria2Downloader struct {
 }
 
 // NewAria2Downloader creates a new aria2 downloader.
-func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir string) (*Aria2Downloader, error) {
+func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir string, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("parse aria2 addr %s: %w", addr, err)
@@ -39,6 +41,12 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 	opts := []aria2.Option{}
 	if secret != "" {
 		opts = append(opts, aria2.WithSecret(secret))
+	}
+	if timeout > 0 {
+		opts = append(opts, aria2.WithJSONRPCOptions(jsonrpc.WithTimeout(timeout)))
+	}
+	if logger != nil {
+		opts = append(opts, aria2.WithJSONRPCOptions(jsonrpc.WithLogger(logger)))
 	}
 
 	client, err := aria2.New(ctx, addr, opts...)

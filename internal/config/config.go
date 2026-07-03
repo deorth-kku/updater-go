@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // hardcodedDefaults returns the hardcoded default values for a ProjectConfig.
@@ -88,15 +89,20 @@ type BinariesConfig struct {
 
 // RequestsConfig configures HTTP request behavior.
 type RequestsConfig struct {
-	Proxy   string `json:"proxy,omitzero"`
-	Timeout int    `json:"timeout,omitzero"`
-	Retry   int    `json:"retry,omitzero"`
+	Proxy   string  `json:"proxy,omitzero"`
+	Timeout float64 `json:"timeout,omitzero"`
+	Retry   int     `json:"retry,omitzero"`
+}
+
+func (r RequestsConfig) GetTimeout() time.Duration {
+	return time.Duration(r.Timeout) * time.Second
 }
 
 // Aria2Config configures the aria2 RPC connection.
 type Aria2Config struct {
-	IP            string `json:"ip"`              // "127.0.0.1" or remote host
-	RPCListenPort string `json:"rpc-listen-port"` // "6800"
+	IP            string `json:"ip,omitzero"`              // "127.0.0.1" or remote host
+	RPCListenPort string `json:"rpc-listen-port,omitzero"` // "6800"
+	Schema        string `json:"schema,omitzero"`
 	RPCSecret     string `json:"rpc-secret,omitzero"`
 	RemoteDir     string `json:"remote-dir,omitzero"` // only when using remote aria2
 	LocalDir      string `json:"local-dir,omitzero"`  // only when using remote aria2
@@ -104,11 +110,7 @@ type Aria2Config struct {
 
 // RPCAddr returns the full RPC endpoint URL.
 func (a Aria2Config) RPCAddr() string {
-	scheme := "http"
-	if a.IP != "" && (a.IP != "127.0.0.1" && a.IP != "localhost") {
-		scheme = "ws"
-	}
-	return fmt.Sprintf("%s://%s:%s/jsonrpc", scheme, a.IP, a.RPCListenPort)
+	return fmt.Sprintf("%s://%s:%s/jsonrpc", a.Schema, a.IP, a.RPCListenPort)
 }
 
 // IsRemote returns true when aria2 runs on a different host.
@@ -180,6 +182,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Aria2.RPCListenPort == "" {
 		cfg.Aria2.RPCListenPort = "6800"
+	}
+	if cfg.Aria2.Schema == "" {
+		cfg.Aria2.Schema = "ws"
 	}
 	if cfg.Requests.Timeout == 0 {
 		cfg.Requests.Timeout = 30
