@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -87,23 +85,4 @@ func (h *httpClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 		Body:       body,
 		Header:     resp.Header,
 	}, nil
-}
-
-// doRequest performs an HTTP GET and returns an HTTPResponse.
-func doRequest(ctx context.Context, url string) (*HTTPResponse, error) {
-	return NewHTTPClient(0).Get(ctx, url)
-}
-
-// unmarshalJSON decodes JSON from bytes into v.
-func unmarshalJSON(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
-}
-
-// jsonError is a generic JSON API error response.
-type jsonError struct {
-	Message string `json:"message"`
-}
-
-func (e *jsonError) Error() string {
-	return fmt.Sprintf("API error: %s", e.Message)
 }

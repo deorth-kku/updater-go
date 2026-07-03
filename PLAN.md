@@ -299,7 +299,7 @@ type Store struct {
 
 type Entry struct {
     ConfigPath string `json:"config_path"`
-    Date       string `json:"date,omitempty"`
+    Date       string `json:"date,omitzero"`
 }
 ```
 

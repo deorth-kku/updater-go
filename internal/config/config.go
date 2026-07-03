@@ -73,33 +73,33 @@ type Config struct {
 	Binaries     BinariesConfig  `json:"binarys"`
 	Requests     RequestsConfig  `json:"requests"`
 	Projects     []ProjectEntry  `json:"projects"`
-	Repositories []string        `json:"repository,omitempty"`
-	Defaults     json.RawMessage `json:"defaults,omitempty"`
-	LocalDir     string          `json:"local-dir,omitempty"`
-	Metadata     []MetadataRepo  `json:"metadata,omitempty"`
-	JSONVer      string          `json:"jsonver,omitempty"`
+	Repositories []string        `json:"repository,omitzero"`
+	Defaults     json.RawMessage `json:"defaults,omitzero"`
+	LocalDir     string          `json:"local-dir,omitzero"`
+	Metadata     []MetadataRepo  `json:"metadata,omitzero"`
+	JSONVer      string          `json:"jsonver,omitzero"`
 }
 
 // BinariesConfig configures binary paths.
 type BinariesConfig struct {
 	Aria2c     string `json:"aria2c"`
-	Libarchive string `json:"libarchive,omitempty"`
+	Libarchive string `json:"libarchive,omitzero"`
 }
 
 // RequestsConfig configures HTTP request behavior.
 type RequestsConfig struct {
-	Proxy   string `json:"proxy,omitempty"`
-	Timeout int    `json:"timeout,omitempty"`
-	Retry   int    `json:"retry,omitempty"`
+	Proxy   string `json:"proxy,omitzero"`
+	Timeout int    `json:"timeout,omitzero"`
+	Retry   int    `json:"retry,omitzero"`
 }
 
 // Aria2Config configures the aria2 RPC connection.
 type Aria2Config struct {
 	IP            string `json:"ip"`              // "127.0.0.1" or remote host
 	RPCListenPort string `json:"rpc-listen-port"` // "6800"
-	RPCSecret     string `json:"rpc-secret,omitempty"`
-	RemoteDir     string `json:"remote-dir,omitempty"` // only when using remote aria2
-	LocalDir      string `json:"local-dir,omitempty"`  // only when using remote aria2
+	RPCSecret     string `json:"rpc-secret,omitzero"`
+	RemoteDir     string `json:"remote-dir,omitzero"` // only when using remote aria2
+	LocalDir      string `json:"local-dir,omitzero"`  // only when using remote aria2
 }
 
 // RPCAddr returns the full RPC endpoint URL.
@@ -125,7 +125,7 @@ type MetadataRepo struct {
 type ProjectEntry struct {
 	Name     string `json:"name"`
 	SavePath string `json:"save_path"`
-	Version  string `json:"version,omitempty"`
+	Version  string `json:"version,omitzero"`
 	Enabled  bool   `json:"enabled"`
 }
 

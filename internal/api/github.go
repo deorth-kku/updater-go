@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -50,14 +51,14 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	if g.noPull {
 		// Single release response
 		var rel githubRelease
-		if err := unmarshalJSON(resp.Body, &rel); err != nil {
+		if err := json.Unmarshal(resp.Body, &rel); err != nil {
 			return nil, fmt.Errorf("parse github release: %w", err)
 		}
 		return g.buildRelease(rel), nil
 	}
 
 	var releases []githubRelease
-	if err := unmarshalJSON(resp.Body, &releases); err != nil {
+	if err := json.Unmarshal(resp.Body, &releases); err != nil {
 		return nil, fmt.Errorf("parse github releases: %w", err)
 	}
 	if len(releases) == 0 {

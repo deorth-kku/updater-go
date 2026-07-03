@@ -11,78 +11,78 @@ import (
 type ProjectConfig struct {
 	Basic          BasicConfig      `json:"basic"`
 	Download       DownloadConfig   `json:"download"`
-	Version        VersionConfig    `json:"version,omitempty"`
-	Decompress     DecompressConfig `json:"decompress,omitempty"`
-	Process        ProcessConfig    `json:"process,omitempty"`
-	Build          BuildConfig      `json:"build,omitempty"`
-	CurrentVersion string           `json:"current_version,omitempty"`
+	Version        VersionConfig    `json:"version,omitzero"`
+	Decompress     DecompressConfig `json:"decompress,omitzero"`
+	Process        ProcessConfig    `json:"process,omitzero"`
+	Build          BuildConfig      `json:"build,omitzero"`
+	CurrentVersion string           `json:"current_version,omitzero"`
 	JSONVersion    string           `json:"jsonver"`
 }
 
 // BasicConfig identifies the API type and the source project.
 type BasicConfig struct {
 	APIType     string            `json:"api_type"` // "github", "appveyor", "sourceforge", "simplespider", "apijson"
-	AccountName string            `json:"account_name,omitempty"`
-	ProjectName string            `json:"project_name,omitempty"`
-	PageURL     string            `json:"page_url,omitempty"`
-	APIURL      string            `json:"api_url,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`
+	AccountName string            `json:"account_name,omitzero"`
+	ProjectName string            `json:"project_name,omitzero"`
+	PageURL     string            `json:"page_url,omitzero"`
+	APIURL      string            `json:"api_url,omitzero"`
+	Headers     map[string]string `json:"headers,omitzero"`
 }
 
 // DownloadConfig controls how the download URL is constructed and what file to pick.
 type DownloadConfig struct {
-	Keyword              StringOrSlice          `json:"keyword,omitempty"`
-	UpdateKeyword        StringOrSlice          `json:"update_keyword,omitempty"`
-	ExcludeKeyword       StringOrSlice          `json:"exclude_keyword,omitempty"`
-	Filetype             StringOrSlice          `json:"filetype,omitempty"` // string or []string
-	Regexes              []string               `json:"regexes,omitempty"`
-	URL                  string                 `json:"url,omitempty"`
-	AddVersionToFilename bool                   `json:"add_version_to_filename,omitempty"`
-	FilenameOverride     string                 `json:"filename_override,omitempty"`
-	Path                 []interface{}          `json:"path,omitempty"` // for apijson: base URL + path segments
-	Index                int                    `json:"index,omitempty"`
-	Indexes              []int                  `json:"indexes,omitempty"`
-	TryRedirect          bool                   `json:"try_redirect,omitempty"`
-	Data                 map[string]interface{} `json:"data,omitempty"`
+	Keyword              StringOrSlice          `json:"keyword,omitzero"`
+	UpdateKeyword        StringOrSlice          `json:"update_keyword,omitzero"`
+	ExcludeKeyword       StringOrSlice          `json:"exclude_keyword,omitzero"`
+	Filetype             StringOrSlice          `json:"filetype,omitzero"` // string or []string
+	Regexes              []string               `json:"regexes,omitzero"`
+	URL                  string                 `json:"url,omitzero"`
+	AddVersionToFilename bool                   `json:"add_version_to_filename,omitzero"`
+	FilenameOverride     string                 `json:"filename_override,omitzero"`
+	Path                 []interface{}          `json:"path,omitzero"` // for apijson: base URL + path segments
+	Index                int                    `json:"index,omitzero"`
+	Indexes              []int                  `json:"indexes,omitzero"`
+	TryRedirect          bool                   `json:"try_redirect,omitzero"`
+	Data                 map[string]interface{} `json:"data,omitzero"`
 }
 
 // VersionConfig controls how the version string is extracted.
 type VersionConfig struct {
-	Path          []interface{} `json:"path,omitempty"`
-	UseExeVersion bool          `json:"use_exe_version,omitempty"`
-	UseCmdVersion bool          `json:"use_cmd_version,omitempty"`
-	FromPage      bool          `json:"from_page,omitempty"`
-	Index         int           `json:"index,omitempty"`
-	Regex         string        `json:"regex,omitempty"`
+	Path          []interface{} `json:"path,omitzero"`
+	UseExeVersion bool          `json:"use_exe_version,omitzero"`
+	UseCmdVersion bool          `json:"use_cmd_version,omitzero"`
+	FromPage      bool          `json:"from_page,omitzero"`
+	Index         int           `json:"index,omitzero"`
+	Regex         string        `json:"regex,omitzero"`
 }
 
 // DecompressConfig controls post-download extraction behavior.
 type DecompressConfig struct {
-	Skip                      BoolOrString `json:"skip,omitempty"`
-	IncludeFileType           []string     `json:"include_file_type,omitempty"`
-	ExcludeFileType           []string     `json:"exclude_file_type,omitempty"`
-	ExcludeFileTypeWhenUpdate []string     `json:"exclude_file_type_when_update,omitempty"`
-	SingleDir                 BoolOrString `json:"single_dir,omitempty"`
-	KeepDownloadFile          bool         `json:"keep_download_file,omitempty"`
-	UseBuiltinZipfile         bool         `json:"use_builtin_zipfile,omitempty"`
-	UseSystemPackageManager   bool         `json:"use_system_package_manager,omitempty"`
-	CleanInstall              bool         `json:"clean_install,omitempty"`
+	Skip                      BoolOrString `json:"skip,omitzero"`
+	IncludeFileType           []string     `json:"include_file_type,omitzero"`
+	ExcludeFileType           []string     `json:"exclude_file_type,omitzero"`
+	ExcludeFileTypeWhenUpdate []string     `json:"exclude_file_type_when_update,omitzero"`
+	SingleDir                 BoolOrString `json:"single_dir,omitzero"`
+	KeepDownloadFile          bool         `json:"keep_download_file,omitzero"`
+	UseBuiltinZipfile         bool         `json:"use_builtin_zipfile,omitzero"`
+	UseSystemPackageManager   bool         `json:"use_system_package_manager,omitzero"`
+	CleanInstall              bool         `json:"clean_install,omitzero"`
 }
 
 // ProcessConfig controls process restart behavior.
 type ProcessConfig struct {
-	ImageName    string `json:"image_name,omitempty"`
-	AllowRestart bool   `json:"allow_restart,omitempty"`
-	Service      bool   `json:"service,omitempty"`
-	RestartWait  int    `json:"restart_wait,omitempty"`
-	StopCmd      string `json:"stop_cmd,omitempty"`
-	StartCmd     string `json:"start_cmd,omitempty"`
+	ImageName    string `json:"image_name,omitzero"`
+	AllowRestart bool   `json:"allow_restart,omitzero"`
+	Service      bool   `json:"service,omitzero"`
+	RestartWait  int    `json:"restart_wait,omitzero"`
+	StopCmd      string `json:"stop_cmd,omitzero"`
+	StartCmd     string `json:"start_cmd,omitzero"`
 }
 
 // BuildConfig controls build/source-fetch behavior.
 type BuildConfig struct {
-	NoPull bool   `json:"no_pull,omitempty"`
-	Branch string `json:"branch,omitempty"`
+	NoPull bool   `json:"no_pull,omitzero"`
+	Branch string `json:"branch,omitzero"`
 }
 
 // StringOrSlice allows a JSON field to be either a string or an array of strings.

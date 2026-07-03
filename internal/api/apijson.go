@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -37,7 +38,7 @@ func (a *ApiJsonAPI) fetchJSON(ctx context.Context) error {
 		return fmt.Errorf("apijson fetch: %w", err)
 	}
 
-	if err := unmarshalJSON(resp.Body, &a.jsonData); err != nil {
+	if err := json.Unmarshal(resp.Body, &a.jsonData); err != nil {
 		return fmt.Errorf("parse apijson: %w", err)
 	}
 	return nil

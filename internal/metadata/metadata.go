@@ -13,7 +13,7 @@ import (
 // Entry maps a project name to its config file path within a repo.
 type Entry struct {
 	ConfigPath string `json:"config_path"`
-	Date       string `json:"date,omitempty"`
+	Date       string `json:"date,omitzero"`
 }
 
 // Store holds metadata from all configured repos.

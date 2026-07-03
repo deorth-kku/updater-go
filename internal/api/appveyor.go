@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -48,7 +49,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	var history appveyorHistory
-	if err := unmarshalJSON(resp.Body, &history); err != nil {
+	if err := json.Unmarshal(resp.Body, &history); err != nil {
 		return nil, fmt.Errorf("parse appveyor history: %w", err)
 	}
 
@@ -67,7 +68,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 
 		var buildDetail appveyorBuildDetail
-		if err := unmarshalJSON(buildResp.Body, &buildDetail); err != nil {
+		if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
 			continue
 		}
 
@@ -83,7 +84,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 
 		var artifacts []AppveyorArtifact
-		if err := unmarshalJSON(artResp.Body, &artifacts); err != nil {
+		if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
 			continue
 		}
 
