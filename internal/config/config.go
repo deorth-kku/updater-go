@@ -192,6 +192,12 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
+func GetDefault() *Config {
+	cfg := new(Config)
+	applyDefaults(cfg)
+	return cfg
+}
+
 // ProjectConfigPath returns the local override path for a project config.
 func ProjectConfigPath(root, name string) string {
 	return filepath.Join(root, "config", name+".json")

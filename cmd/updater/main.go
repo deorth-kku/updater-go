@@ -63,11 +63,16 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Resolve config path
 	configPath := resolveConfigPath()
-
-	// Load main config
-	cfg, err := config.Load(configPath)
+	var cfg *config.Config
+	_, err := os.Stat(configPath)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		cfg = config.GetDefault()
+	} else {
+		// Load main config
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
 	}
 
 	// Create context with cancellation
@@ -75,13 +80,8 @@ func run(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Handle signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		logger.Info("received signal, shutting down")
-		cancel()
-	}()
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create HTTP downloader for metadata
 	httpDL := api.NewHTTPClientWithProxy(0, cfg.Requests.Proxy)
@@ -247,15 +247,24 @@ func resolveConfigPath() string {
 	if _, err := os.Stat("config.json"); err == nil {
 		return "config.json"
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "config.json"
+
+	// Windows: %APPDATA%\updater-rpc\config.json
+	// Linux/macOS: $HOME/.config/updater-rpc/config.json
+	var defaultPath string
+	if runtime.GOOS == "windows" {
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			return "config.json"
+		}
+		defaultPath = filepath.Join(appdata, "updater-rpc", "config.json")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "config.json"
+		}
+		defaultPath = filepath.Join(home, ".config", "updater-rpc", "config.json")
 	}
-	defaultPath := filepath.Join(home, ".config", "updater-rpc", "config.json")
-	if _, err := os.Stat(defaultPath); err == nil {
-		return defaultPath
-	}
-	return "config.json"
+	return defaultPath
 }
 
 func loadProjectConfig(configRoot, name string, defaults json.RawMessage) (*config.ProjectConfig, error) {
