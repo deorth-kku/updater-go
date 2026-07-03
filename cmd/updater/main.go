@@ -46,38 +46,8 @@ func main() {
 	rootCmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "max parallel update workers (default: GOMAXPROCS)")
 	rootCmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "enable debug logging")
 
-	// Add completion subcommand
-	rootCmd.AddCommand(completionCmd(rootCmd))
-
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
-	}
-}
-
-// completionCmd returns the shell auto-completion subcommand.
-func completionCmd(root *cobra.Command) *cobra.Command {
-	return &cobra.Command{
-		Use:   "completion [shell]",
-		Short: "Generate shell auto-completion scripts",
-		Long: `Generate auto-completion scripts for the specified shell.
-
-Supported shells: bash, zsh, fish, powershell`,
-		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
-		Args:      cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "bash":
-				return root.GenBashCompletion(os.Stdout)
-			case "zsh":
-				return root.GenZshCompletion(os.Stdout)
-			case "fish":
-				return root.GenFishCompletion(os.Stdout, true)
-			case "powershell":
-				return root.GenPowerShellCompletion(os.Stdout)
-			default:
-				return fmt.Errorf("unsupported shell: %s", args[0])
-			}
-		},
 	}
 }
 
