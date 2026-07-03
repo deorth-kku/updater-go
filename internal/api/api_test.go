@@ -1,0 +1,242 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/deorth-kku/updater-go/internal/config"
+)
+
+// mockDownloader is an in-memory mock that returns predefined responses.
+type mockDownloader struct {
+	handlers map[string]*HTTPResponse
+}
+
+func newMockDownloader() *mockDownloader {
+	return &mockDownloader{handlers: make(map[string]*HTTPResponse)}
+}
+
+func (m *mockDownloader) On(path string, resp *HTTPResponse) {
+	m.handlers[path] = resp
+}
+
+func (m *mockDownloader) Get(_ context.Context, url string) (*HTTPResponse, error) {
+	path := url
+	if idx := strings.Index(url, "://"); idx >= 0 {
+		path = url[idx+3:]
+		if slashIdx := strings.Index(path, "/"); slashIdx >= 0 {
+			path = path[slashIdx:]
+		}
+	}
+	if idx := strings.Index(path, "?"); idx >= 0 {
+		path = path[:idx]
+	}
+	if resp, ok := m.handlers[path]; ok {
+		return resp, nil
+	}
+	return &HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
+}
+
+func TestGitHubAPI_Latest(t *testing.T) {
+	fixture := []githubRelease{
+		{
+			TagName: "v2.47.0",
+			Name:    "Git 2.47.0",
+			Assets: []githubAsset{
+				{Name: "PortableGit-2.47.0-64-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable.7z"},
+				{Name: "PortableGit-2.47.0-32-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable32.7z"},
+			},
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(fixture)
+	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewGitHubAPI(config.BasicConfig{
+		AccountName: "git-for-windows",
+		ProjectName: "git",
+	}, mdl)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.Version != "v2.47.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "v2.47.0")
+	}
+	if len(rel.Assets) != 2 {
+		t.Fatalf("len(Assets) = %d, want 2", len(rel.Assets))
+	}
+}
+
+func TestFilterAssets(t *testing.T) {
+	assets := []Asset{
+		{URL: "a", Name: "PortableGit-2.47.0-64-bit.7z"},
+		{URL: "b", Name: "PortableGit-2.47.0-32-bit.7z"},
+		{URL: "c", Name: "Bundle-2.47.0.zip"},
+	}
+
+	got := FilterAssets(assets, []string{"64-bit"}, nil, "7z")
+	if len(got) != 1 || got[0].Name != "PortableGit-2.47.0-64-bit.7z" {
+		t.Errorf("FilterAssets() = %v, want [PortableGit-2.47.0-64-bit.7z]", got)
+	}
+
+	got = FilterAssets(assets, nil, []string{"32-bit"}, "7z")
+	if len(got) != 1 || got[0].Name != "PortableGit-2.47.0-64-bit.7z" {
+		t.Errorf("FilterAssets() exclude = %v", got)
+	}
+
+	got = FilterAssets(assets, nil, nil, "zip")
+	if len(got) != 1 || got[0].Name != "Bundle-2.47.0.zip" {
+		t.Errorf("FilterAssets() filetype = %v", got)
+	}
+}
+
+func TestAppveyorAPI_Latest(t *testing.T) {
+	history := appveyorHistory{
+		Builds: []struct {
+			Version       string `json:"version"`
+			PullRequestID string `json:"pullRequestId"`
+		}{
+			{Version: "1.0.0", PullRequestID: "pr-1"},
+			{Version: "1.0.1", PullRequestID: ""},
+		},
+	}
+	buildDetail := appveyorBuildDetail{
+		Build: struct {
+			Jobs    []appveyorJob `json:"jobs"`
+			Updated string        `json:"updated"`
+		}{
+			Jobs: []appveyorJob{{Name: "release", ID: "job-123"}},
+		},
+	}
+	artifacts := []appveyorArtifact{{FileName: "rpcs3-win64-vulkan.zip"}}
+
+	mdl := newMockDownloader()
+	hBody, _ := json.Marshal(history)
+	bBody, _ := json.Marshal(buildDetail)
+	aBody, _ := json.Marshal(artifacts)
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", &HTTPResponse{StatusCode: 200, Body: hBody})
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/build/1.0.1", &HTTPResponse{StatusCode: 200, Body: bBody})
+	mdl.On("/api/buildjobs/job-123/artifacts", &HTTPResponse{StatusCode: 200, Body: aBody})
+
+	api := NewAppveyorAPI(config.BasicConfig{
+		AccountName: "blueskythlikesclouds",
+		ProjectName: "mikumikulibrary",
+	}, mdl)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.Version != "1.0.1" {
+		t.Errorf("Version = %q, want %q (PR build 1.0.0 should be skipped)", rel.Version, "1.0.1")
+	}
+	if rel.JobID != "job-123" {
+		t.Errorf("JobID = %q, want %q", rel.JobID, "job-123")
+	}
+}
+
+func TestSourceforgeAPI_Latest(t *testing.T) {
+	rss := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item><title>/7zip_23.01-x64.exe</title><pubDate>Mon, 01 Jan 2024 00:00:00 +0000</pubDate></item>
+  <item><title>/7zip_23.01-x86.exe</title><pubDate>Sun, 31 Dec 2023 00:00:00 +0000</pubDate></item>
+</channel></rss>`
+
+	mdl := newMockDownloader()
+	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+
+	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, mdl)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.URL == "" {
+		t.Error("URL is empty")
+	}
+	if rel.Version == "" {
+		t.Error("Version is empty")
+	}
+}
+
+func TestApiJsonAPI_Latest(t *testing.T) {
+	jsonData := []interface{}{
+		map[string]interface{}{
+			"id":        float64(12345),
+			"apkName":   "skyline-v2024.3.11.r1.apk",
+			"runNumber": float64(98765),
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(jsonData)
+	mdl.On("/builds", &HTTPResponse{StatusCode: 200, Body: body})
+
+	path := []interface{}{
+		"https://skyline-builds.alula.gay/cache",
+		[]interface{}{float64(0), "apkName"},
+	}
+
+	api := NewApiJsonAPI(
+		config.BasicConfig{APIURL: "https://skyline-builds.alula.gay/builds"},
+		config.DownloadConfig{
+			Path:     path,
+			Filetype: config.StringOrSlice{"apk"},
+		},
+		config.VersionConfig{Regex: "skyline-v(.*?)\\.apk"},
+		mdl,
+	)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.URL == "" {
+		t.Error("URL is empty")
+	}
+}
+
+func TestDictPathGet(t *testing.T) {
+	data := []interface{}{
+		map[string]interface{}{
+			"id":   float64(42),
+			"name": "test",
+		},
+	}
+
+	tests := []struct {
+		name    string
+		path    []interface{}
+		wantErr bool
+	}{
+		{"array index", []interface{}{float64(0)}, false},
+		{"nested via index then key", []interface{}{float64(0), "id"}, false},
+		{"out of range", []interface{}{float64(99)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := dictPathGet(data, tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("dictPathGet() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewAPI_UnknownType(t *testing.T) {
+	_, err := NewAPI(config.BasicConfig{APIType: "unknown"}, config.DownloadConfig{}, config.VersionConfig{}, nil)
+	if err == nil {
+		t.Error("NewAPI() expected error for unknown api_type")
+	}
+}
+
+var _ = http.MethodGet
