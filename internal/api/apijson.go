@@ -15,7 +15,7 @@ type ApiJsonAPI struct {
 	dlCfg      config.DownloadConfig
 	verCfg     config.VersionConfig
 	downloader Downloader
-	jsonData   interface{} // Can be map or array
+	jsonData   any // Can be map or array
 }
 
 // NewApiJsonAPI creates a new ApiJson API adapter.
@@ -45,17 +45,17 @@ func (a *ApiJsonAPI) fetchJSON(ctx context.Context) error {
 }
 
 // dictPathGet traverses a nested structure using a path of keys/indices.
-func dictPathGet(input interface{}, path []config.PathSegment) (interface{}, error) {
+func dictPathGet(input any, path []config.PathSegment) (any, error) {
 	current := input
 	for _, segment := range path {
 		if segment.IsString() {
-			m, ok := current.(map[string]interface{})
+			m, ok := current.(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("apijson: expected map at key %q, got %T", segment.Str, current)
 			}
 			current = m[segment.Str]
 		} else {
-			arr, ok := current.([]interface{})
+			arr, ok := current.([]any)
 			if !ok {
 				return nil, fmt.Errorf("apijson: expected array at index %d, got %T", segment.Int, current)
 			}

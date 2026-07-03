@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"syscall"
 
@@ -136,13 +137,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 		// Filter by positional args if provided
 		if len(args) > 0 {
-			found := false
-			for _, arg := range args {
-				if arg == proj.Name {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(args, proj.Name)
 			if !found {
 				continue
 			}

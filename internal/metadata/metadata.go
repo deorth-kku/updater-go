@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sync"
 
 	"github.com/deorth-kku/updater-go/internal/api"
@@ -55,9 +56,7 @@ func (s *Store) Load(ctx context.Context) error {
 			return fmt.Errorf("parse metadata from %s: %w", metaURL, err)
 		}
 
-		for name, entry := range entries {
-			s.entries[name] = entry
-		}
+		maps.Copy(s.entries, entries)
 	}
 
 	return nil
@@ -76,8 +75,6 @@ func (s *Store) Entries() map[string]Entry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make(map[string]Entry, len(s.entries))
-	for k, v := range s.entries {
-		out[k] = v
-	}
+	maps.Copy(out, s.entries)
 	return out
 }

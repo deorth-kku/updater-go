@@ -34,11 +34,11 @@ func (m *mockDownloader) Close() error          { return nil }
 type mockHTTPDownloader struct{}
 
 func (m *mockHTTPDownloader) Get(_ context.Context, url string) (*api.HTTPResponse, error) {
-	release := []map[string]interface{}{
+	release := []map[string]any{
 		{
 			"tag_name": "v1.0.0",
 			"name":     "Test Release",
-			"assets":   []interface{}{},
+			"assets":   []any{},
 		},
 	}
 	body, _ := json.Marshal(release)

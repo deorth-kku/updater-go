@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,12 +27,8 @@ type SimpleSpiderAPI struct {
 // NewSimpleSpiderAPI creates a new SimpleSpider API adapter.
 func NewSimpleSpiderAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader) *SimpleSpiderAPI {
 	headers := make(map[string]string)
-	for k, v := range defaultHeaders {
-		headers[k] = v
-	}
-	for k, v := range cfg.Headers {
-		headers[k] = v
-	}
+	maps.Copy(headers, defaultHeaders)
+	maps.Copy(headers, cfg.Headers)
 
 	return &SimpleSpiderAPI{
 		pageURL:    cfg.PageURL,

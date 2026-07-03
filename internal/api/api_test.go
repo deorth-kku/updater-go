@@ -25,8 +25,8 @@ func (m *mockDownloader) On(path string, resp *HTTPResponse) {
 
 func (m *mockDownloader) Get(_ context.Context, url string) (*HTTPResponse, error) {
 	path := url
-	if idx := strings.Index(url, "://"); idx >= 0 {
-		path = url[idx+3:]
+	if _, after, ok := strings.Cut(url, "://"); ok {
+		path = after
 		if slashIdx := strings.Index(path, "/"); slashIdx >= 0 {
 			path = path[slashIdx:]
 		}
@@ -180,8 +180,8 @@ func newFrag[T string | int](v T) config.PathSegment {
 }
 
 func TestApiJsonAPI_Latest(t *testing.T) {
-	jsonData := []interface{}{
-		map[string]interface{}{
+	jsonData := []any{
+		map[string]any{
 			"id":        float64(12345),
 			"apkName":   "skyline-v2024.3.11.r1.apk",
 			"runNumber": float64(98765),
@@ -217,8 +217,8 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 }
 
 func TestDictPathGet(t *testing.T) {
-	data := []interface{}{
-		map[string]interface{}{
+	data := []any{
+		map[string]any{
 			"id":   float64(42),
 			"name": "test",
 		},
@@ -352,7 +352,7 @@ func TestSimpleSpiderAPI_PostBody(t *testing.T) {
 	api := NewSimpleSpiderAPI(
 		config.BasicConfig{PageURL: "https://example.com/api/search"},
 		config.DownloadConfig{
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"query": "test",
 				"page":  float64(1),
 			},
@@ -371,9 +371,9 @@ func TestSimpleSpiderAPI_PostBody(t *testing.T) {
 }
 
 func TestApiJsonAPI_VersionExtraction(t *testing.T) {
-	jsonData := map[string]interface{}{
+	jsonData := map[string]any{
 		"version": "2.0.0",
-		"download": map[string]interface{}{
+		"download": map[string]any{
 			"url": "https://example.com/app-v2.0.0.zip",
 		},
 	}
@@ -410,8 +410,8 @@ func TestApiJsonAPI_VersionExtraction(t *testing.T) {
 }
 
 func TestApiJsonAPI_DictPathGet(t *testing.T) {
-	data := []interface{}{
-		map[string]interface{}{
+	data := []any{
+		map[string]any{
 			"id":   float64(42),
 			"name": "test",
 		},

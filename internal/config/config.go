@@ -31,7 +31,7 @@ func hardcodedDefaults() ProjectConfig {
 			Index:                0,
 			Indexes:              []int{},
 			TryRedirect:          true,
-			Data:                 map[string]interface{}{},
+			Data:                 map[string]any{},
 		},
 		Version: VersionConfig{
 			Path:          []PathSegment{},

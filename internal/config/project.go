@@ -62,11 +62,6 @@ func (ps *PathSegment) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("PathSegment must be number, string, or object, got %s", string(data))
 }
 
-// IsIndex returns true if this segment is an array index.
-func (ps PathSegment) IsIndex() bool {
-	return ps.Int >= 0
-}
-
 // IsString returns true if this segment is a string key.
 func (ps PathSegment) IsString() bool {
 	return ps.Int < 0
@@ -100,19 +95,19 @@ func (s *StringOrJsonPath) UnmarshalJSON(data []byte) error {
 
 // DownloadConfig controls how the download URL is constructed and what file to pick.
 type DownloadConfig struct {
-	Keyword              StringOrSlice          `json:"keyword,omitzero"`
-	UpdateKeyword        StringOrSlice          `json:"update_keyword,omitzero"`
-	ExcludeKeyword       StringOrSlice          `json:"exclude_keyword,omitzero"`
-	Filetype             StringOrSlice          `json:"filetype,omitzero"` // string or []string
-	Regexes              []string               `json:"regexes,omitzero"`
-	URL                  string                 `json:"url,omitzero"`
-	AddVersionToFilename bool                   `json:"add_version_to_filename,omitzero"`
-	FilenameOverride     string                 `json:"filename_override,omitzero"`
-	Path                 []StringOrJsonPath     `json:"path,omitzero"` // for apijson: URL prefix + JSON path segments
-	Index                int                    `json:"index,omitzero"`
-	Indexes              []int                  `json:"indexes,omitzero"`
-	TryRedirect          bool                   `json:"try_redirect,omitzero"`
-	Data                 map[string]interface{} `json:"data,omitzero"`
+	Keyword              StringOrSlice      `json:"keyword,omitzero"`
+	UpdateKeyword        StringOrSlice      `json:"update_keyword,omitzero"`
+	ExcludeKeyword       StringOrSlice      `json:"exclude_keyword,omitzero"`
+	Filetype             StringOrSlice      `json:"filetype,omitzero"` // string or []string
+	Regexes              []string           `json:"regexes,omitzero"`
+	URL                  string             `json:"url,omitzero"`
+	AddVersionToFilename bool               `json:"add_version_to_filename,omitzero"`
+	FilenameOverride     string             `json:"filename_override,omitzero"`
+	Path                 []StringOrJsonPath `json:"path,omitzero"` // for apijson: URL prefix + JSON path segments
+	Index                int                `json:"index,omitzero"`
+	Indexes              []int              `json:"indexes,omitzero"`
+	TryRedirect          bool               `json:"try_redirect,omitzero"`
+	Data                 map[string]any     `json:"data,omitzero"`
 }
 
 // VersionConfig controls how the version string is extracted.
