@@ -23,11 +23,19 @@ type SimpleSpiderAPI struct {
 
 // NewSimpleSpiderAPI creates a new SimpleSpider API adapter.
 func NewSimpleSpiderAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader) *SimpleSpiderAPI {
+	headers := make(map[string]string)
+	for k, v := range defaultHeaders {
+		headers[k] = v
+	}
+	for k, v := range cfg.Headers {
+		headers[k] = v
+	}
+
 	return &SimpleSpiderAPI{
 		pageURL:    cfg.PageURL,
 		dlCfg:      dlCfg,
 		verCfg:     verCfg,
-		headers:    defaultHeaders,
+		headers:    headers,
 		downloader: dl,
 	}
 }
@@ -148,7 +156,8 @@ func (s *SimpleSpiderAPI) extractURLFromPage(page string) (string, error) {
 			return "", fmt.Errorf("compile regex %d: %w", i, err)
 		}
 
-		matches := re.FindStringSubmatch(currentURL)
+		// Apply regex to the page HTML, not the URL
+		matches := re.FindStringSubmatch(page)
 		if len(matches) < 2 {
 			return "", fmt.Errorf("regex %d did not match: %s", i, pattern)
 		}

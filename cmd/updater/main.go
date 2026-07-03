@@ -13,8 +13,10 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/deorth-kku/updater-go/internal/downloader"
+	"github.com/deorth-kku/updater-go/internal/metadata"
 	"github.com/deorth-kku/updater-go/internal/updater"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -44,8 +46,38 @@ func main() {
 	rootCmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "max parallel update workers (default: GOMAXPROCS)")
 	rootCmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "enable debug logging")
 
+	// Add completion subcommand
+	rootCmd.AddCommand(completionCmd(rootCmd))
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+// completionCmd returns the shell auto-completion subcommand.
+func completionCmd(root *cobra.Command) *cobra.Command {
+	return &cobra.Command{
+		Use:   "completion [shell]",
+		Short: "Generate shell auto-completion scripts",
+		Long: `Generate auto-completion scripts for the specified shell.
+
+Supported shells: bash, zsh, fish, powershell`,
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		Args:      cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return root.GenBashCompletion(os.Stdout)
+			case "zsh":
+				return root.GenZshCompletion(os.Stdout)
+			case "fish":
+				return root.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return root.GenPowerShellCompletion(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %s", args[0])
+			}
+		},
 	}
 }
 
@@ -79,6 +111,29 @@ func run(cmd *cobra.Command, args []string) error {
 		logger.Info("received signal, shutting down")
 		cancel()
 	}()
+
+	// Create HTTP downloader for metadata
+	httpDL := api.NewHTTPClient(0)
+
+	// Load metadata from repositories
+	if len(cfg.Repositories) > 0 {
+		metaStore := metadata.NewStore(cfg.Repositories, httpDL)
+		if err := metaStore.Load(ctx); err != nil {
+			logger.Warn("metadata load failed", "error", err)
+		} else {
+			// Use metadata to discover projects not in config
+			for name, entry := range metaStore.Entries() {
+				if !projectExists(cfg.Projects, name) {
+					logger.Info("discovered project from metadata", "name", name, "config_path", entry.ConfigPath)
+					cfg.Projects = append(cfg.Projects, config.ProjectEntry{
+						Name:     name,
+						SavePath: cfg.LocalDir,
+						Enabled:  true,
+					})
+				}
+			}
+		}
+	}
 
 	// Create aria2 downloader
 	addr := cfg.Aria2.RPCAddr()
@@ -134,7 +189,7 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 
 		g.Go(func() error {
-			u := updater.New(*projCfg, proj.SavePath, flagForce, aria2DL, nil, logger)
+			u := updater.New(*projCfg, proj.SavePath, flagForce, aria2DL, httpDL, logger)
 			result := u.Update(gctx)
 			mu.Lock()
 			results = append(results, result)
@@ -156,11 +211,67 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Persist added project if --add2conf
+	if flagAdd2Conf && len(args) > 0 {
+		if err := persistProject(configPath, args[0], cfg.LocalDir); err != nil {
+			logger.Error("persist project failed", "error", err)
+		}
+	}
+
 	if flagWait {
 		fmt.Println("Press Enter to exit...")
 		fmt.Scanln()
 	}
 
+	return nil
+}
+
+// projectExists checks if a project name already exists in the config.
+func projectExists(projects []config.ProjectEntry, name string) bool {
+	for _, p := range projects {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// persistProject adds a new project to the config file.
+func persistProject(configPath, projectName, savePath string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	var cfg config.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+
+	// Check if project already exists
+	if projectExists(cfg.Projects, projectName) {
+		slog.Info("project already exists in config", "name", projectName)
+		return nil
+	}
+
+	// Add new project
+	cfg.Projects = append(cfg.Projects, config.ProjectEntry{
+		Name:     projectName,
+		SavePath: savePath,
+		Enabled:  true,
+	})
+
+	// Write back
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, out, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
+	slog.Info("project persisted to config", "name", projectName)
 	return nil
 }
 

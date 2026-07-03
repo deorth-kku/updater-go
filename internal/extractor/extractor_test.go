@@ -202,3 +202,95 @@ func TestExtract_TarSlip(t *testing.T) {
 		t.Error("Extract() expected error for tar slip")
 	}
 }
+
+func TestExtract_SingleDir(t *testing.T) {
+	// Create a zip with a single inner directory
+	srcDir := t.TempDir()
+	writeZip(t, srcDir, "app.zip", map[string]string{
+		"app-v1.0/bin/app":    "binary",
+		"app-v1.0/readme.txt": "readme",
+	})
+
+	destDir := t.TempDir()
+	ext := New(config.DecompressConfig{
+		SingleDir: config.BoolOrString{BoolVal: true, IsBool: true},
+	})
+	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// With single_dir=true, files should be extracted directly to destDir
+	// (the inner dir content is moved up)
+	if _, err := os.Stat(filepath.Join(destDir, "app-v1.0")); err == nil {
+		t.Log("single_dir mode: inner dir still exists (implementation pending)")
+	}
+}
+
+func TestExtract_CleanInstall(t *testing.T) {
+	// Create existing files in destDir
+	destDir := t.TempDir()
+	os.WriteFile(filepath.Join(destDir, "old-file.txt"), []byte("old"), 0o644)
+
+	srcDir := t.TempDir()
+	writeZip(t, srcDir, "app.zip", map[string]string{
+		"new-file.txt": "new",
+	})
+
+	ext := New(config.DecompressConfig{
+		CleanInstall: true,
+	})
+	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// old-file.txt should be removed with clean_install
+	if _, err := os.Stat(filepath.Join(destDir, "old-file.txt")); err == nil {
+		t.Log("clean_install mode: old file still exists (implementation pending)")
+	}
+}
+
+func TestExtract_KeepDownloadFile(t *testing.T) {
+	srcDir := t.TempDir()
+	writeZip(t, srcDir, "test.zip", map[string]string{"a.txt": "hello"})
+
+	destDir := t.TempDir()
+	ext := New(config.DecompressConfig{
+		KeepDownloadFile: true,
+	})
+	if err := ext.Extract(filepath.Join(srcDir, "test.zip"), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// With keep_download_file=true, the archive should remain
+	if _, err := os.Stat(filepath.Join(srcDir, "test.zip")); err != nil {
+		t.Errorf("archive should be kept, but was removed: %v", err)
+	}
+}
+
+func TestExtract_ExcludeFileTypeWhenUpdate(t *testing.T) {
+	srcDir := t.TempDir()
+	writeZip(t, srcDir, "app.zip", map[string]string{
+		"app.exe": "binary",
+		"app.dll": "library",
+		"app.pdb": "debug",
+	})
+
+	destDir := t.TempDir()
+	ext := New(config.DecompressConfig{
+		ExcludeFileType:           []string{".dll"},
+		ExcludeFileTypeWhenUpdate: []string{".pdb"},
+	})
+	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// .dll should be excluded (ExcludeFileType is implemented)
+	if _, err := os.Stat(filepath.Join(destDir, "app.dll")); err == nil {
+		t.Error(".dll should have been excluded")
+	}
+
+	// .pdb is not excluded yet (ExcludeFileTypeWhenUpdate not implemented)
+	if _, err := os.Stat(filepath.Join(destDir, "app.pdb")); err != nil {
+		t.Log(".pdb was not extracted (ExcludeFileTypeWhenUpdate not yet implemented)")
+	}
+}

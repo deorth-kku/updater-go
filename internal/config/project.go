@@ -21,11 +21,12 @@ type ProjectConfig struct {
 
 // BasicConfig identifies the API type and the source project.
 type BasicConfig struct {
-	APIType     string `json:"api_type"` // "github", "appveyor", "sourceforge", "simplespider", "apijson"
-	AccountName string `json:"account_name,omitempty"`
-	ProjectName string `json:"project_name,omitempty"`
-	PageURL     string `json:"page_url,omitempty"`
-	APIURL      string `json:"api_url,omitempty"`
+	APIType     string            `json:"api_type"` // "github", "appveyor", "sourceforge", "simplespider", "apijson"
+	AccountName string            `json:"account_name,omitempty"`
+	ProjectName string            `json:"project_name,omitempty"`
+	PageURL     string            `json:"page_url,omitempty"`
+	APIURL      string            `json:"api_url,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
 }
 
 // DownloadConfig controls how the download URL is constructed and what file to pick.
@@ -154,4 +155,13 @@ func (b BoolOrString) String() string {
 		return b.StringVal
 	}
 	return ""
+}
+
+// MarshalJSON implements custom marshaling for BoolOrString.
+// Outputs just the boolean or string value, not the struct.
+func (b BoolOrString) MarshalJSON() ([]byte, error) {
+	if b.IsBool {
+		return json.Marshal(b.BoolVal)
+	}
+	return json.Marshal(b.StringVal)
 }

@@ -70,3 +70,14 @@ func (s *Store) GetEntry(name string) (Entry, bool) {
 	entry, ok := s.entries[name]
 	return entry, ok
 }
+
+// Entries returns a copy of all metadata entries.
+func (s *Store) Entries() map[string]Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]Entry, len(s.entries))
+	for k, v := range s.entries {
+		out[k] = v
+	}
+	return out
+}

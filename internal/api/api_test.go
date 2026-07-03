@@ -239,4 +239,113 @@ func TestNewAPI_UnknownType(t *testing.T) {
 	}
 }
 
+func TestSimpleSpiderAPI_HeadersFromConfig(t *testing.T) {
+	// Test that headers from BasicConfig are used by verifying the API is created correctly
+	api := NewSimpleSpiderAPI(
+		config.BasicConfig{
+			PageURL: "https://example.com/page",
+			Headers: map[string]string{
+				"User-Agent": "CustomAgent/1.0",
+				"Accept":     "text/html",
+			},
+		},
+		config.DownloadConfig{Regexes: []string{`href="([^"]+\.zip)"`}},
+		config.VersionConfig{},
+		nil,
+	)
+
+	// Verify the API was created with the correct headers
+	if api.headers["User-Agent"] != "CustomAgent/1.0" {
+		t.Errorf("headers[User-Agent] = %q, want %q", api.headers["User-Agent"], "CustomAgent/1.0")
+	}
+	if api.headers["Accept"] != "text/html" {
+		t.Errorf("headers[Accept] = %q, want %q", api.headers["Accept"], "text/html")
+	}
+}
+
+func TestSimpleSpiderAPI_PostBody(t *testing.T) {
+	// Test that Data field is accepted without error during construction
+	api := NewSimpleSpiderAPI(
+		config.BasicConfig{PageURL: "https://example.com/api/search"},
+		config.DownloadConfig{
+			Data: map[string]interface{}{
+				"query": "test",
+				"page":  float64(1),
+			},
+		},
+		config.VersionConfig{},
+		nil,
+	)
+
+	// Verify the Data field is stored
+	if api.dlCfg.Data["query"] != "test" {
+		t.Errorf("Data[query] = %v, want %q", api.dlCfg.Data["query"], "test")
+	}
+	if api.dlCfg.Data["page"] != float64(1) {
+		t.Errorf("Data[page] = %v, want %v", api.dlCfg.Data["page"], float64(1))
+	}
+}
+
+func TestApiJsonAPI_VersionExtraction(t *testing.T) {
+	jsonData := map[string]interface{}{
+		"version": "2.0.0",
+		"download": map[string]interface{}{
+			"url": "https://example.com/app-v2.0.0.zip",
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(jsonData)
+	mdl.On("/api/versions", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewApiJsonAPI(
+		config.BasicConfig{APIURL: "https://example.com/api/versions"},
+		config.DownloadConfig{
+			Path: []interface{}{"download", "url"},
+		},
+		config.VersionConfig{
+			Path: []interface{}{"version"},
+		},
+		mdl,
+	)
+
+	rel, err := api.Latest(context.Background())
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	if rel.URL == "" {
+		t.Error("URL is empty")
+	}
+}
+
+func TestApiJsonAPI_DictPathGet(t *testing.T) {
+	data := []interface{}{
+		map[string]interface{}{
+			"id":   float64(42),
+			"name": "test",
+		},
+	}
+
+	tests := []struct {
+		name    string
+		path    []interface{}
+		wantErr bool
+	}{
+		{"array index", []interface{}{float64(0)}, false},
+		{"nested via index then key", []interface{}{float64(0), "id"}, false},
+		{"out of range", []interface{}{float64(99)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := dictPathGet(data, tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("dictPathGet() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 var _ = http.MethodGet

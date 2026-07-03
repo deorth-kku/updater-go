@@ -64,6 +64,15 @@ func detectExt(path string) string {
 	}
 }
 
+func (e *Extractor) shouldSkipFile(name string) bool {
+	for _, ext := range e.cfg.ExcludeFileType {
+		if strings.HasSuffix(strings.ToLower(name), strings.ToLower(ext)) {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Extractor) extractZip(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -72,6 +81,11 @@ func (e *Extractor) extractZip(src, dest string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
+		// Skip files matching exclude_file_type
+		if e.shouldSkipFile(f.Name) {
+			continue
+		}
+
 		target := filepath.Join(dest, f.Name)
 
 		// Security: prevent zip slip
