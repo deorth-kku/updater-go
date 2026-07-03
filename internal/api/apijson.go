@@ -45,28 +45,24 @@ func (a *ApiJsonAPI) fetchJSON(ctx context.Context) error {
 }
 
 // dictPathGet traverses a nested structure using a path of keys/indices.
-func dictPathGet(input interface{}, path []interface{}) (interface{}, error) {
+func dictPathGet(input interface{}, path []config.PathSegment) (interface{}, error) {
 	current := input
 	for _, segment := range path {
-		switch s := segment.(type) {
-		case string:
+		if segment.IsString() {
 			m, ok := current.(map[string]interface{})
 			if !ok {
-				return nil, fmt.Errorf("apijson: expected map at key %q, got %T", s, current)
+				return nil, fmt.Errorf("apijson: expected map at key %q, got %T", segment.Str, current)
 			}
-			current = m[s]
-		case float64:
+			current = m[segment.Str]
+		} else {
 			arr, ok := current.([]interface{})
 			if !ok {
-				return nil, fmt.Errorf("apijson: expected array at index %v, got %T", s, current)
+				return nil, fmt.Errorf("apijson: expected array at index %d, got %T", segment.Int, current)
 			}
-			idx := int(s)
-			if idx < 0 || idx >= len(arr) {
-				return nil, fmt.Errorf("apijson: index %d out of range [0, %d)", idx, len(arr))
+			if segment.Int < 0 || segment.Int >= len(arr) {
+				return nil, fmt.Errorf("apijson: index %d out of range [0, %d)", segment.Int, len(arr))
 			}
-			current = arr[idx]
-		default:
-			return nil, fmt.Errorf("apijson: unsupported path segment type %T", segment)
+			current = arr[segment.Int]
 		}
 		if current == nil {
 			return nil, fmt.Errorf("apijson: nil value at path segment %v", segment)
@@ -116,17 +112,14 @@ func (a *ApiJsonAPI) buildDownloadURL() (string, error) {
 
 	parts := make([]string, 0, len(a.dlCfg.Path))
 	for i, segment := range a.dlCfg.Path {
-		switch s := segment.(type) {
-		case string:
-			parts = append(parts, s)
-		case []interface{}:
-			val, err := dictPathGet(a.jsonData, s)
+		if segment.Path == nil {
+			parts = append(parts, segment.Str)
+		} else {
+			val, err := dictPathGet(a.jsonData, segment.Path)
 			if err != nil {
 				return "", fmt.Errorf("apijson path[%d]: %w", i, err)
 			}
 			parts = append(parts, fmt.Sprintf("%v", val))
-		default:
-			return "", fmt.Errorf("apijson: unsupported path segment type %T at index %d", segment, i)
 		}
 	}
 

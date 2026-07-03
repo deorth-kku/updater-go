@@ -168,6 +168,17 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 	}
 }
 
+func newFrag[T string | int](v T) config.PathSegment {
+	switch v := any(v).(type) {
+	case string:
+		return config.PathSegment{Str: v, Int: -1}
+	case int:
+		return config.PathSegment{Int: v}
+	default:
+		panic("not possible")
+	}
+}
+
 func TestApiJsonAPI_Latest(t *testing.T) {
 	jsonData := []interface{}{
 		map[string]interface{}{
@@ -181,9 +192,9 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 	body, _ := json.Marshal(jsonData)
 	mdl.On("/builds", &HTTPResponse{StatusCode: 200, Body: body})
 
-	path := []interface{}{
-		"https://skyline-builds.alula.gay/cache",
-		[]interface{}{float64(0), "apkName"},
+	path := []config.StringOrJsonPath{
+		{Str: "https://skyline-builds.alula.gay/cache"},
+		{Path: []config.PathSegment{newFrag(0), newFrag("apkName")}},
 	}
 
 	api := NewApiJsonAPI(
@@ -215,12 +226,12 @@ func TestDictPathGet(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		path    []interface{}
+		path    []config.PathSegment
 		wantErr bool
 	}{
-		{"array index", []interface{}{float64(0)}, false},
-		{"nested via index then key", []interface{}{float64(0), "id"}, false},
-		{"out of range", []interface{}{float64(99)}, true},
+		{"array index", []config.PathSegment{{Int: 0}}, false},
+		{"nested via index then key", []config.PathSegment{newFrag(0), newFrag("id")}, false},
+		{"out of range", []config.PathSegment{{Int: 99}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,10 +388,14 @@ func TestApiJsonAPI_VersionExtraction(t *testing.T) {
 	api := NewApiJsonAPI(
 		config.BasicConfig{APIURL: "https://example.com/api/versions"},
 		config.DownloadConfig{
-			Path: []interface{}{"download", "url"},
+			Path: []config.StringOrJsonPath{
+				{Path: []config.PathSegment{newFrag("download"), newFrag("url")}},
+			},
 		},
 		config.VersionConfig{
-			Path: []interface{}{"version"},
+			Path: []config.PathSegment{
+				{Str: "version", Int: -1},
+			},
 		},
 		mdl,
 	)
@@ -404,12 +419,12 @@ func TestApiJsonAPI_DictPathGet(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		path    []interface{}
+		path    []config.PathSegment
 		wantErr bool
 	}{
-		{"array index", []interface{}{float64(0)}, false},
-		{"nested via index then key", []interface{}{float64(0), "id"}, false},
-		{"out of range", []interface{}{float64(99)}, true},
+		{"array index", []config.PathSegment{{Int: 0}}, false},
+		{"nested via index then key", []config.PathSegment{{Int: 0}, {Str: "id", Int: -1}}, false},
+		{"out of range", []config.PathSegment{{Int: 99}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
