@@ -30,6 +30,7 @@ var (
 	flagWait     bool
 	flagJobs     int
 	flagVerbose  bool
+	flagPath     string
 )
 
 func main() {
@@ -46,6 +47,7 @@ func main() {
 	rootCmd.Flags().BoolVarP(&flagWait, "wait", "w", false, "pause before exit (Windows convenience)")
 	rootCmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "max parallel update workers (default: GOMAXPROCS)")
 	rootCmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "enable debug logging")
+	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "install path for added project (e.g. --path /opt/tools)")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -72,6 +74,30 @@ func run(cmd *cobra.Command, args []string) error {
 		cfg, err = config.Load(configPath)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
+		}
+	}
+
+	// Handle --path flag: add project and update
+	if flagPath != "" {
+		if len(args) != 1 {
+			return fmt.Errorf("--path requires exactly one project name, got %d", len(args))
+		}
+		projectName := args[0]
+		if err := persistProject(cfg, configPath, projectName, flagPath); err != nil {
+			return fmt.Errorf("persist project: %w", err)
+		}
+		// Reload config after adding project
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("reload config: %w", err)
+		}
+		args = nil // Clear args to run all projects
+	}
+
+	// Persist added project if --add2conf
+	if flagAdd2Conf && len(args) > 0 {
+		if err := persistProject(cfg, configPath, args[0], cfg.LocalDir); err != nil {
+			logger.Error("persist project failed", "error", err)
 		}
 	}
 
@@ -176,13 +202,6 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Persist added project if --add2conf
-	if flagAdd2Conf && len(args) > 0 {
-		if err := persistProject(configPath, args[0], cfg.LocalDir); err != nil {
-			logger.Error("persist project failed", "error", err)
-		}
-	}
-
 	if flagWait {
 		fmt.Println("Press Enter to exit...")
 		fmt.Scanln()
@@ -202,17 +221,7 @@ func projectExists(projects []config.ProjectEntry, name string) bool {
 }
 
 // persistProject adds a new project to the config file.
-func persistProject(configPath, projectName, savePath string) error {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-
-	var cfg config.Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-
+func persistProject(cfg *config.Config, configPath, projectName, savePath string) error {
 	// Check if project already exists
 	if projectExists(cfg.Projects, projectName) {
 		slog.Info("project already exists in config", "name", projectName)
@@ -232,7 +241,18 @@ func persistProject(configPath, projectName, savePath string) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, out, 0o644); err != nil {
+	err = os.MkdirAll(filepath.Dir(configPath), 0o755)
+	if err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	f, err := os.Create(configPath)
+	if err != nil {
+		return fmt.Errorf("create config: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(out); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 

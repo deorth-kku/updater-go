@@ -190,6 +190,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Binaries.Aria2c == "" {
 		cfg.Binaries.Aria2c = "aria2c"
 	}
+	if cfg.Repositories == nil {
+		cfg.Repositories = []string{"https://raw.githubusercontent.com/deorth-kku/updater-config/master"}
+	}
 }
 
 func GetDefault() *Config {
