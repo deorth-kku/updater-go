@@ -2,6 +2,8 @@
 // WebSocket callback-based completion detection.
 package downloader
 
+//go:generate stringer -type=downloadStatus
+
 import (
 	"context"
 	"fmt"
@@ -28,6 +30,81 @@ type Aria2Downloader struct {
 	remoteDir string
 	localDir  string
 	useWS     bool // true if addr is ws:// or wss://
+	sub       *subscriber
+}
+
+//go:generate stringer -type=downloadStatus
+
+//go:generate stringer -type=downloadStatus
+
+// downloadStatus represents the final state of a download.
+type downloadStatus int
+
+const (
+	statusComplete downloadStatus = iota
+	statusError
+	statusStopped
+)
+
+// event is a download completion event.
+type event = downloadStatus
+
+// subscriber distributes aria2 download events to subscribers by GID.
+type subscriber struct {
+	dist map[string]chan event
+	mu   sync.RWMutex
+}
+
+// newSubscriber creates a new subscriber.
+func newSubscriber() *subscriber {
+	return &subscriber{
+		dist: make(map[string]chan event),
+	}
+}
+
+// OnDownloadComplete handles aria2 download complete events.
+func (s *subscriber) OnDownloadComplete(ctx context.Context, e aria2.DownloadEvent) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if ch, ok := s.dist[e.GID]; ok {
+		select {
+		case ch <- statusComplete:
+		default:
+		}
+	}
+}
+
+// OnDownloadError handles aria2 download error events.
+func (s *subscriber) OnDownloadError(ctx context.Context, e aria2.DownloadEvent) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if ch, ok := s.dist[e.GID]; ok {
+		select {
+		case ch <- statusError:
+		default:
+		}
+	}
+}
+
+// OnDownloadStop handles aria2 download stop events.
+func (s *subscriber) OnDownloadStop(ctx context.Context, e aria2.DownloadEvent) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if ch, ok := s.dist[e.GID]; ok {
+		select {
+		case ch <- statusStopped:
+		default:
+		}
+	}
+}
+
+// subscribe returns a channel that receives events for the given GID.
+func (s *subscriber) subscribe(gid string) chan event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ch := make(chan event, 1)
+	s.dist[gid] = ch
+	return ch
 }
 
 // NewAria2Downloader creates a new aria2 downloader.
@@ -38,7 +115,14 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 	}
 	useWS := u.Scheme == "ws" || u.Scheme == "wss"
 
-	opts := []aria2.Option{}
+	sub := newSubscriber()
+	opts := []aria2.Option{
+		aria2.WithNotificationCallbacks(aria2.NotificationCallbacks{
+			OnDownloadComplete: sub.OnDownloadComplete,
+			OnDownloadError:    sub.OnDownloadError,
+			OnDownloadStop:     sub.OnDownloadStop,
+		}),
+	}
 	if secret != "" {
 		opts = append(opts, aria2.WithSecret(secret))
 	}
@@ -59,6 +143,7 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 		remoteDir: remoteDir,
 		localDir:  localDir,
 		useWS:     useWS,
+		sub:       sub,
 	}, nil
 }
 
@@ -107,60 +192,24 @@ func (d *Aria2Downloader) waitForCompletion(ctx context.Context, gid string) err
 
 // waitForWS uses only WebSocket callbacks — no polling.
 func (d *Aria2Downloader) waitForWS(ctx context.Context, gid string) error {
-	done := make(chan struct{}, 1)
-	var mu sync.Mutex
-	var lastStatus string
-
-	d.client.SetNotificationCallbacks(aria2.NotificationCallbacks{
-		OnDownloadComplete: func(ctx context.Context, event aria2.DownloadEvent) {
-			if event.GID == gid {
-				mu.Lock()
-				lastStatus = "complete"
-				mu.Unlock()
-				select {
-				case done <- struct{}{}:
-				default:
-				}
-			}
-		},
-		OnDownloadError: func(ctx context.Context, event aria2.DownloadEvent) {
-			if event.GID == gid {
-				mu.Lock()
-				lastStatus = "error"
-				mu.Unlock()
-				select {
-				case done <- struct{}{}:
-				default:
-				}
-			}
-		},
-		OnDownloadStop: func(ctx context.Context, event aria2.DownloadEvent) {
-			if event.GID == gid {
-				mu.Lock()
-				lastStatus = "stopped"
-				mu.Unlock()
-				select {
-				case done <- struct{}{}:
-				default:
-				}
-			}
-		},
-	})
+	ch := d.sub.subscribe(gid)
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-done:
-		mu.Lock()
-		status := lastStatus
-		mu.Unlock()
-		if status == "error" {
+	case status := <-ch:
+		switch status {
+		case statusError, statusStopped:
 			statusResp, err := d.client.TellStatus(ctx, gid)
 			if err == nil && statusResp != nil {
-				return fmt.Errorf("aria2 download error: %s: %s", statusResp.ErrorCode, statusResp.ErrorMessage)
+				return fmt.Errorf("aria2 download %s: %s: %s", status, statusResp.ErrorCode, statusResp.ErrorMessage)
 			}
+			return fmt.Errorf("aria2 download %s", status)
+		case statusComplete:
+			return nil
+		default:
+			return fmt.Errorf("aria2 download %s", status)
 		}
-		return nil
 	}
 }
 
