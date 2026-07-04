@@ -61,8 +61,8 @@ func replaceVars(s, path, name, dlFilename, version string) string {
 }
 
 // Update runs the full update flow for the project.
-func (u *Updater) Update(ctx context.Context) *UpdateResult {
-	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName}
+func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
+	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: oldVersion}
 	// Step 1: Detect latest version via API
 	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL)
 	if err != nil {

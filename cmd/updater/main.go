@@ -182,7 +182,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 		g.Go(func() error {
 			u := updater.New(*projCfg, proj.SavePath, flagForce, aria2DL, httpDL, logger)
-			result := u.Update(gctx)
+			result := u.Update(gctx, proj.Version)
 			mu.Lock()
 			defer mu.Unlock()
 			results = append(results, result)

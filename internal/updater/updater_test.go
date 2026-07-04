@@ -60,7 +60,7 @@ func TestUpdate_FullFlow(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(context.Background())
+	result := u.Update(t.Context(), "")
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -81,7 +81,7 @@ func TestUpdate_NoUpdateNeeded(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	u := New(projCfg, saveDir, false, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(context.Background())
+	result := u.Update(t.Context(), "v1.0.0")
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -115,7 +115,7 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(context.Background())
+	result := u.Update(t.Context(), "")
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -154,7 +154,7 @@ func TestUpdate_ProcessRestart(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(context.Background())
+	result := u.Update(t.Context(), "")
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -184,7 +184,7 @@ func TestUpdate_CustomStopStartCmd(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(context.Background())
+	result := u.Update(t.Context(), "")
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)

@@ -121,9 +121,9 @@ func TestAria2_RPCAddr(t *testing.T) {
 		cfg  Aria2Config
 		want string
 	}{
-		{name: "local http", cfg: Aria2Config{IP: "127.0.0.1", RPCListenPort: "6800"}, want: "http://127.0.0.1:6800/jsonrpc"},
-		{name: "local localhost", cfg: Aria2Config{IP: "localhost", RPCListenPort: "6800"}, want: "http://localhost:6800/jsonrpc"},
-		{name: "remote ws", cfg: Aria2Config{IP: "192.168.1.100", RPCListenPort: "6800"}, want: "ws://192.168.1.100:6800/jsonrpc"},
+		{name: "local http", cfg: Aria2Config{IP: "127.0.0.1", RPCListenPort: "6800", Schema: "http"}, want: "http://127.0.0.1:6800/jsonrpc"},
+		{name: "local localhost", cfg: Aria2Config{IP: "localhost", RPCListenPort: "6800", Schema: "http"}, want: "http://localhost:6800/jsonrpc"},
+		{name: "remote ws", cfg: Aria2Config{IP: "192.168.1.100", RPCListenPort: "6800", Schema: "ws"}, want: "ws://192.168.1.100:6800/jsonrpc"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
