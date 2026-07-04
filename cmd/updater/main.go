@@ -194,9 +194,12 @@ func run(cmd *cobra.Command, args []string) error {
 			u := updater.New(*projCfg, proj.SavePath, flagForce, aria2DL, httpDL, logger)
 			result := u.Update(gctx)
 			mu.Lock()
+			defer mu.Unlock()
 			results = append(results, result)
-			mu.Unlock()
-			return result.Error
+			if result.Error != nil {
+				return result.Error
+			}
+			return writeProjectConfig(filepath.Dir(configPath), proj.Name, result.NewVersion)
 		})
 	}
 
@@ -219,6 +222,41 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// writeJSON writes data as indented JSON to a file, creating parent dirs as needed.
+func writeJSON(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	return nil
+}
+
+// writeProjectConfig reads a project config, updates CurrentVersion, and writes it back.
+func writeProjectConfig(configRoot, name, version string) error {
+	path := config.ProjectConfigPath(configRoot, name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read project config %s: %w", path, err)
+	}
+	var pc config.ProjectConfig
+	if err := json.Unmarshal(data, &pc); err != nil {
+		return fmt.Errorf("parse project config %s: %w", path, err)
+	}
+	pc.CurrentVersion = version
+	out, err := json.MarshalIndent(pc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal project config: %w", err)
+	}
+	return writeJSON(path, out)
 }
 
 // projectExists checks if a project name already exists in the config.
@@ -251,20 +289,8 @@ func persistProject(cfg *config.Config, configPath, projectName, savePath string
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-
-	err = os.MkdirAll(filepath.Dir(configPath), 0o755)
-	if err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-
-	f, err := os.Create(configPath)
-	if err != nil {
-		return fmt.Errorf("create config: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := f.Write(out); err != nil {
-		return fmt.Errorf("write config: %w", err)
+	if err := writeJSON(configPath, out); err != nil {
+		return err
 	}
 
 	slog.Info("project persisted to config", "name", projectName)

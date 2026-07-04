@@ -3,7 +3,6 @@ package updater
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -187,11 +186,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		}
 	}
 
-	// Step 8: Config writeback — save current version
-	if err := u.writeConfigBack(result.ProjectName, rel.Version); err != nil {
-		u.logger.Warn("config writeback failed", "project", result.ProjectName, "error", err)
-	}
-
 	u.logger.Info("update completed",
 		"project", result.ProjectName,
 		"version", rel.Version,
@@ -206,33 +200,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 func (u *Updater) getPostCmds() []string {
 	// The Python config has post_cmd as a list of strings in the project config.
 	// For now, return empty — this can be extended when the field is added.
-	return nil
-}
-
-// writeConfigBack writes the current version back to the project config file.
-func (u *Updater) writeConfigBack(projectName, version string) error {
-	configPath := filepath.Join(filepath.Dir(u.savePath), "config", projectName+".json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config %s: %w", configPath, err)
-	}
-
-	var pc config.ProjectConfig
-	if err := json.Unmarshal(data, &pc); err != nil {
-		return fmt.Errorf("parse config %s: %w", configPath, err)
-	}
-
-	pc.CurrentVersion = version
-
-	out, err := json.MarshalIndent(pc, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, out, 0o644); err != nil {
-		return fmt.Errorf("write config %s: %w", configPath, err)
-	}
-
 	return nil
 }
 
