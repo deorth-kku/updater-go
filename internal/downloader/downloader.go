@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,9 +150,11 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 
 // Download adds a URI to aria2 and waits for completion.
 func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir string) (string, string, error) {
-	aria2Dir := d.remoteDir
-	if aria2Dir == "" {
+	var aria2Dir string
+	if d.remoteDir == "" || d.localDir == "" {
 		aria2Dir = saveDir
+	} else {
+		aria2Dir = d.remoteDir + "/" + filepath.Base(saveDir)
 	}
 
 	opts := map[string]string{
@@ -163,27 +166,26 @@ func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir
 	if err != nil {
 		return "", "", fmt.Errorf("aria2 addURI: %w", err)
 	}
-
-	if err := d.waitForCompletion(ctx, gid); err != nil {
+	stat, err := d.waitForCompletion(ctx, gid)
+	if err != nil {
 		return "", "", err
 	}
 
-	localPath := d.resolveLocalPath(aria2Dir, filename)
-	return localPath, gid, nil
+	return d.resolveLocalPath(stat), gid, nil
 }
 
 // resolveLocalPath converts the aria2 save path to a local filesystem path.
-func (d *Aria2Downloader) resolveLocalPath(aria2Dir, filename string) string {
-	if d.localDir != "" {
-		rel, _ := filepath.Rel(d.remoteDir, aria2Dir)
-		return filepath.Join(d.localDir, rel, filename)
+func (d *Aria2Downloader) resolveLocalPath(stat *aria2.Status) string {
+	path := stat.Files[0].Path
+	if d.localDir == "" || d.remoteDir == "" {
+		return path
 	}
-	return filepath.Join(aria2Dir, filename)
+	return strings.Replace(path, d.remoteDir, d.localDir, 1)
 }
 
 // waitForCompletion blocks until the download with the given GID completes or errors.
 // Uses WebSocket callbacks when available, falls back to polling for HTTP RPC.
-func (d *Aria2Downloader) waitForCompletion(ctx context.Context, gid string) error {
+func (d *Aria2Downloader) waitForCompletion(ctx context.Context, gid string) (*aria2.Status, error) {
 	if d.useWS {
 		return d.waitForWS(ctx, gid)
 	}
@@ -191,57 +193,53 @@ func (d *Aria2Downloader) waitForCompletion(ctx context.Context, gid string) err
 }
 
 // waitForWS uses only WebSocket callbacks — no polling.
-func (d *Aria2Downloader) waitForWS(ctx context.Context, gid string) error {
+func (d *Aria2Downloader) waitForWS(ctx context.Context, gid string) (*aria2.Status, error) {
 	ch := d.sub.subscribe(gid)
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	case status := <-ch:
 		switch status {
 		case statusError, statusStopped:
 			statusResp, err := d.client.TellStatus(ctx, gid)
 			if err == nil && statusResp != nil {
-				return fmt.Errorf("aria2 download %s: %s: %s", status, statusResp.ErrorCode, statusResp.ErrorMessage)
+				return statusResp, fmt.Errorf("aria2 download %s: %s: %s", status, statusResp.ErrorCode, statusResp.ErrorMessage)
 			}
-			return fmt.Errorf("aria2 download %s", status)
+			return statusResp, err
 		case statusComplete:
-			return nil
+			return d.client.TellStatus(ctx, gid)
 		default:
-			return fmt.Errorf("aria2 download %s", status)
+			return nil, fmt.Errorf("aria2 download %s", status)
 		}
 	}
 }
 
 // waitForPoll uses only TellStatus polling — no WebSocket.
-func (d *Aria2Downloader) waitForPoll(ctx context.Context, gid string) error {
+func (d *Aria2Downloader) waitForPoll(ctx context.Context, gid string) (*aria2.Status, error) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-
-	timeout := time.After(30 * time.Minute)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-ticker.C:
 			statusResp, err := d.client.TellStatus(ctx, gid)
 			if err != nil {
-				continue
+				return nil, err
 			}
 			if statusResp == nil {
 				continue
 			}
 			switch statusResp.Status {
 			case "complete":
-				return nil
+				return statusResp, nil
 			case "error":
-				return fmt.Errorf("aria2 download error: %s: %s", statusResp.ErrorCode, statusResp.ErrorMessage)
+				return nil, fmt.Errorf("aria2 download error: %s: %s", statusResp.ErrorCode, statusResp.ErrorMessage)
 			case "stopped":
-				return nil
+				return nil, fmt.Errorf("aria2 download stopped: %s", gid)
 			}
-		case <-timeout:
-			return fmt.Errorf("download timeout after 30 minutes for GID %s", gid)
 		}
 	}
 }

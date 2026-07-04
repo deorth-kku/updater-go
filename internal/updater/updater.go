@@ -32,7 +32,7 @@ type UpdateResult struct {
 // Updater orchestrates the update process for a single project.
 type Updater struct {
 	projectCfg config.ProjectConfig
-	savePath   string
+	entry      config.ProjectEntry
 	force      bool
 	dl         downloader.Downloader
 	httpDL     api.Downloader
@@ -40,10 +40,10 @@ type Updater struct {
 }
 
 // New creates a new Updater.
-func New(cfg config.ProjectConfig, savePath string, force bool, dl downloader.Downloader, httpDL api.Downloader, logger *slog.Logger) *Updater {
+func New(cfg config.ProjectConfig, entry config.ProjectEntry, force bool, dl downloader.Downloader, httpDL api.Downloader, logger *slog.Logger) *Updater {
 	return &Updater{
 		projectCfg: cfg,
-		savePath:   savePath,
+		entry:      entry,
 		force:      force,
 		dl:         dl,
 		httpDL:     httpDL,
@@ -61,8 +61,8 @@ func replaceVars(s, path, name, dlFilename, version string) string {
 }
 
 // Update runs the full update flow for the project.
-func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
-	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: oldVersion}
+func (u *Updater) Update(ctx context.Context) *UpdateResult {
+	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: u.entry.Version}
 	// Step 1: Detect latest version via API
 	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL)
 	if err != nil {
@@ -92,7 +92,7 @@ func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
 
 	// Step 4: Download
 	filename := u.downloadFilename(rel.Version, dlURL)
-	saveDir := filepath.Join(u.savePath, "downloads")
+	saveDir := filepath.Join(u.entry.SavePath, u.entry.Name)
 	localPath, _, err := u.dl.Download(ctx, dlURL, filename, saveDir)
 	if err != nil {
 		result.Error = fmt.Errorf("download: %w", err)
@@ -156,7 +156,7 @@ func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
 			}
 		} else {
 			// Find the executable in the save path
-			exePath := filepath.Join(u.savePath, result.ProjectName, imageName)
+			exePath := filepath.Join(u.entry.SavePath, result.ProjectName, imageName)
 			if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 				exePath += ".exe"
 			}
@@ -170,7 +170,7 @@ func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
 	// Step 7: Post-cmds execution
 	postCmds := u.getPostCmds()
 	for _, cmd := range postCmds {
-		replaced := replaceVars(cmd, u.savePath, result.ProjectName, filename, rel.Version)
+		replaced := replaceVars(cmd, u.entry.SavePath, result.ProjectName, filename, rel.Version)
 		u.logger.Info("running post-cmd", "project", result.ProjectName, "cmd", replaced)
 		parts := strings.Fields(replaced)
 		if len(parts) == 0 {

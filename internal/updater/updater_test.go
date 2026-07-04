@@ -56,11 +56,10 @@ func TestUpdate_FullFlow(t *testing.T) {
 		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true, IsBool: true}},
 	}
 
-	saveDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(t.Context(), "")
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -77,11 +76,10 @@ func TestUpdate_NoUpdateNeeded(t *testing.T) {
 		},
 	}
 
-	saveDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	u := New(projCfg, saveDir, false, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(t.Context(), "v1.0.0")
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir(), Version: "v1.0.0"}, false, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -114,8 +112,8 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 	os.WriteFile(cfgPath, cfgData, 0o644)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(t.Context(), "")
+	u := New(projCfg, config.ProjectEntry{SavePath: saveDir}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -150,11 +148,10 @@ func TestUpdate_ProcessRestart(t *testing.T) {
 		},
 	}
 
-	saveDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(t.Context(), "")
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
@@ -180,11 +177,10 @@ func TestUpdate_CustomStopStartCmd(t *testing.T) {
 		},
 	}
 
-	saveDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	u := New(projCfg, saveDir, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	result := u.Update(t.Context(), "")
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
 
 	if result.Error != nil {
 		t.Fatalf("Update() error = %v", result.Error)
