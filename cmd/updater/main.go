@@ -82,22 +82,12 @@ func run(cmd *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("--path requires exactly one project name, got %d", len(args))
 		}
-		projectName := args[0]
-		if err := persistProject(cfg, configPath, projectName, flagPath); err != nil {
-			return fmt.Errorf("persist project: %w", err)
-		}
-		// Reload config after adding project
-		cfg, err = config.Load(configPath)
-		if err != nil {
-			return fmt.Errorf("reload config: %w", err)
-		}
-		args = nil // Clear args to run all projects
-	}
-
-	// Persist added project if --add2conf
-	if flagAdd2Conf && len(args) > 0 {
-		if err := persistProject(cfg, configPath, args[0], cfg.LocalDir); err != nil {
-			logger.Error("persist project failed", "error", err)
+		addProject(cfg, args[0], flagPath)
+		// Persist added project if --add2conf
+		if flagAdd2Conf {
+			if err := writeJSON(configPath, cfg); err != nil {
+				logger.Error("persist project failed", "error", err)
+			}
 		}
 	}
 
@@ -145,7 +135,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 		// Ensure local configs are up-to-date for all projects
 		for _, proj := range cfg.Projects {
-			if !proj.Enabled {
+			if !proj.Enabled() {
 				continue
 			}
 			if err := metaStore.EnsureLocalConfig(ctx, proj.Name); err != nil {
@@ -168,7 +158,7 @@ func run(cmd *cobra.Command, args []string) error {
 	var mu sync.Mutex
 
 	for _, proj := range cfg.Projects {
-		if !proj.Enabled {
+		if !proj.Enabled() {
 			continue
 		}
 
@@ -199,7 +189,8 @@ func run(cmd *cobra.Command, args []string) error {
 			if result.Error != nil {
 				return result.Error
 			}
-			return writeProjectConfig(filepath.Dir(configPath), proj.Name, result.NewVersion)
+			updateVersion(cfg, proj.Name, result.NewVersion)
+			return writeJSON(configPath, cfg)
 		})
 	}
 
@@ -225,7 +216,7 @@ func run(cmd *cobra.Command, args []string) error {
 }
 
 // writeJSON writes data as indented JSON to a file, creating parent dirs as needed.
-func writeJSON(path string, data []byte) error {
+func writeJSON(path string, data any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
@@ -234,67 +225,49 @@ func writeJSON(path string, data []byte) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	defer f.Close()
-	if _, err := f.Write(data); err != nil {
+	out, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if _, err := f.Write(out); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 	return nil
 }
 
-// writeProjectConfig reads a project config, updates CurrentVersion, and writes it back.
-func writeProjectConfig(configRoot, name, version string) error {
-	path := config.ProjectConfigPath(configRoot, name)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read project config %s: %w", path, err)
+func updateVersion(cfg *config.Config, name, version string) {
+	for i, v := range cfg.Projects {
+		if v.Name == name {
+			cfg.Projects[i].Version = version
+		}
 	}
-	var pc config.ProjectConfig
-	if err := json.Unmarshal(data, &pc); err != nil {
-		return fmt.Errorf("parse project config %s: %w", path, err)
-	}
-	pc.CurrentVersion = version
-	out, err := json.MarshalIndent(pc, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal project config: %w", err)
-	}
-	return writeJSON(path, out)
 }
 
 // projectExists checks if a project name already exists in the config.
-func projectExists(projects []config.ProjectEntry, name string) bool {
-	for _, p := range projects {
+func projectExists(projects []config.ProjectEntry, name string) int {
+	for i, p := range projects {
 		if p.Name == name {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
-// persistProject adds a new project to the config file.
-func persistProject(cfg *config.Config, configPath, projectName, savePath string) error {
+// addProject adds a new project to the config file.
+func addProject(cfg *config.Config, projectName, savePath string) {
 	// Check if project already exists
-	if projectExists(cfg.Projects, projectName) {
-		slog.Info("project already exists in config", "name", projectName)
-		return nil
+	i := projectExists(cfg.Projects, projectName)
+	if i >= 0 {
+		cfg.Projects[i].SavePath = savePath
+		return
 	}
 
 	// Add new project
 	cfg.Projects = append(cfg.Projects, config.ProjectEntry{
 		Name:     projectName,
 		SavePath: savePath,
-		Enabled:  true,
 	})
-
-	// Write back
-	out, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	if err := writeJSON(configPath, out); err != nil {
-		return err
-	}
-
-	slog.Info("project persisted to config", "name", projectName)
-	return nil
+	slog.Info("project added to config", "name", projectName, "path", savePath)
 }
 
 func resolveConfigPath() string {

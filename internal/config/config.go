@@ -125,10 +125,14 @@ type MetadataRepo struct {
 
 // ProjectEntry describes one project in the main config.
 type ProjectEntry struct {
-	Name     string `json:"name"`
-	SavePath string `json:"save_path"`
-	Version  string `json:"version,omitzero"`
-	Enabled  bool   `json:"enabled"`
+	Name     string `json:"name,omitzero"`
+	SavePath string `json:"path,omitzero"`
+	Version  string `json:"currentVersion,omitzero"`
+	Hold     bool   `json:"hold,omitzero"`
+}
+
+func (p ProjectEntry) Enabled() bool {
+	return !p.Hold
 }
 
 // Load reads and parses the main config.json file.

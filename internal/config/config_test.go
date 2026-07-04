@@ -18,7 +18,7 @@ func TestLoad_ValidConfig(t *testing.T) {
             "rpc-listen-port": "6800"
         },
         "projects": [
-            {"name": "git", "save_path": "/opt/git", "enabled": true}
+            {"name": "git", "path": "/opt/git", "enabled": true}
         ]
     }`
 	path := filepath.Join(dir, "config.json")
@@ -66,8 +66,8 @@ func TestLoad_LegacyMigration(t *testing.T) {
 	cfg := `{
         "aria2": {"ip": "127.0.0.1", "rpc-listen-port": "6800"},
         "projects": {
-            "git": {"save_path": "/opt/git", "enabled": true},
-            "7zip": {"save_path": "/opt/7z", "enabled": false}
+            "git": {"path": "/opt/git", "hold": false},
+            "7zip": {"path": "/opt/7z", "hold": true}
         }
     }`
 	path := filepath.Join(dir, "config.json")
@@ -90,7 +90,7 @@ func TestLoad_LegacyMigration(t *testing.T) {
 		t.Errorf("Projects names = %v, want git and 7zip", names)
 	}
 	for _, p := range got.Projects {
-		if p.Name == "7zip" && p.Enabled {
+		if p.Name == "7zip" && p.Enabled() {
 			t.Error("7zip should be disabled")
 		}
 	}

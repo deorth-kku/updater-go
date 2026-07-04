@@ -9,14 +9,13 @@ import (
 
 // ProjectConfig represents a per-project update configuration.
 type ProjectConfig struct {
-	Basic          BasicConfig      `json:"basic"`
-	Download       DownloadConfig   `json:"download"`
-	Version        VersionConfig    `json:"version,omitzero"`
-	Decompress     DecompressConfig `json:"decompress,omitzero"`
-	Process        ProcessConfig    `json:"process,omitzero"`
-	Build          BuildConfig      `json:"build,omitzero"`
-	CurrentVersion string           `json:"current_version,omitzero"`
-	JSONVersion    string           `json:"jsonver"`
+	Basic       BasicConfig      `json:"basic"`
+	Download    DownloadConfig   `json:"download"`
+	Version     VersionConfig    `json:"version,omitzero"`
+	Decompress  DecompressConfig `json:"decompress,omitzero"`
+	Process     ProcessConfig    `json:"process,omitzero"`
+	Build       BuildConfig      `json:"build,omitzero"`
+	JSONVersion string           `json:"jsonver"`
 }
 
 // BasicConfig identifies the API type and the source project.

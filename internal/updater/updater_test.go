@@ -75,7 +75,6 @@ func TestUpdate_NoUpdateNeeded(t *testing.T) {
 		Basic: config.BasicConfig{
 			APIType: "github",
 		},
-		CurrentVersion: "v1.0.0",
 	}
 
 	saveDir := t.TempDir()
@@ -103,7 +102,6 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 			APIType:     "github",
 			ProjectName: "test-project",
 		},
-		CurrentVersion: "v1.0.0",
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
@@ -133,10 +131,6 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 	if err := json.Unmarshal(writtenData, &writtenCfg); err != nil {
 		t.Fatalf("Failed to parse written config: %v", err)
 	}
-
-	if writtenCfg.CurrentVersion != "v1.0.0" {
-		t.Errorf("CurrentVersion = %q, want %q", writtenCfg.CurrentVersion, "v1.0.0")
-	}
 }
 
 func TestUpdate_ProcessRestart(t *testing.T) {
@@ -145,7 +139,6 @@ func TestUpdate_ProcessRestart(t *testing.T) {
 			APIType:     "github",
 			ProjectName: "test-app",
 		},
-		CurrentVersion: "v0.0.0",
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
@@ -174,7 +167,6 @@ func TestUpdate_CustomStopStartCmd(t *testing.T) {
 			APIType:     "github",
 			ProjectName: "test-app",
 		},
-		CurrentVersion: "v0.0.0",
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
