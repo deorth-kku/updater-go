@@ -92,7 +92,7 @@ func (u *Updater) Update(ctx context.Context, oldVersion string) *UpdateResult {
 
 	// Step 4: Download
 	filename := u.downloadFilename(rel.Version, dlURL)
-	saveDir := filepath.Join(u.savePath, result.ProjectName)
+	saveDir := filepath.Join(u.savePath, "downloads")
 	localPath, _, err := u.dl.Download(ctx, dlURL, filename, saveDir)
 	if err != nil {
 		result.Error = fmt.Errorf("download: %w", err)

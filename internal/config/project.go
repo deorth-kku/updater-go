@@ -180,9 +180,9 @@ func (s StringOrSlice) First() string {
 // BoolOrString allows a JSON field to be either a boolean or a string.
 // Used for fields like "skip" and "single_dir" which can be true/false or a directory name.
 type BoolOrString struct {
+	IsBool    bool // true if the value was a boolean
 	BoolVal   bool
 	StringVal string
-	IsBool    bool // true if the value was a boolean
 }
 
 // UnmarshalJSON implements custom unmarshaling for BoolOrString.
