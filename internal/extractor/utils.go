@@ -112,7 +112,7 @@ func cleanInstall(destDir string) error {
 }
 
 // extractTar is the common tar extraction logic shared by tar.gz and tar.xz.
-func extractTar(tr *tar.Reader, dest string, excludeFileType []string) error {
+func extractTar(tr *tar.Reader, dest string, skip skipper) error {
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -123,7 +123,7 @@ func extractTar(tr *tar.Reader, dest string, excludeFileType []string) error {
 		}
 
 		// Skip files matching exclude_file_type
-		if shouldSkipFile(header.Name, excludeFileType) {
+		if skip.shouldSkipFile(header.Name) {
 			continue
 		}
 
@@ -161,10 +161,29 @@ func extractTar(tr *tar.Reader, dest string, excludeFileType []string) error {
 	return nil
 }
 
+type excludeSkipper []string
+
 // shouldSkipFile checks if a filename should be excluded based on file type extensions.
-func shouldSkipFile(name string, excludeFileType []string) bool {
+func (excludeFileType excludeSkipper) shouldSkipFile(name string) bool {
 	for _, ext := range excludeFileType {
 		if strings.HasSuffix(strings.ToLower(name), strings.ToLower(ext)) {
+			return true
+		}
+	}
+	return false
+}
+
+type prefixSkipper string
+
+func (p prefixSkipper) shouldSkipFile(name string) bool {
+	return !strings.HasPrefix(name, string(p))
+}
+
+type mergeSkipper []skipper
+
+func (p mergeSkipper) shouldSkipFile(name string) bool {
+	for _, v := range p {
+		if v.shouldSkipFile(name) {
 			return true
 		}
 	}

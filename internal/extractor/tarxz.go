@@ -20,7 +20,7 @@ func newTarXzExtractor(src string) *tarXzExtractor {
 	return &tarXzExtractor{src: src}
 }
 
-func (t *tarXzExtractor) Extract(excludeFileType []string, dest string) error {
+func (t *tarXzExtractor) Extract(skip skipper, dest string) error {
 	f, err := os.Open(t.src)
 	if err != nil {
 		return err
@@ -32,5 +32,5 @@ func (t *tarXzExtractor) Extract(excludeFileType []string, dest string) error {
 		return fmt.Errorf("xz decompress %s: %w", t.src, err)
 	}
 
-	return extractTar(tar.NewReader(xzr), dest, excludeFileType)
+	return extractTar(tar.NewReader(xzr), dest, skip)
 }

@@ -18,7 +18,7 @@ func newTarGzExtractor(src string) *tarGzExtractor {
 	return &tarGzExtractor{src: src}
 }
 
-func (t *tarGzExtractor) Extract(excludeFileType []string, dest string) error {
+func (t *tarGzExtractor) Extract(skip skipper, dest string) error {
 	f, err := os.Open(t.src)
 	if err != nil {
 		return err
@@ -31,5 +31,5 @@ func (t *tarGzExtractor) Extract(excludeFileType []string, dest string) error {
 	}
 	defer gzr.Close()
 
-	return extractTar(tar.NewReader(gzr), dest, excludeFileType)
+	return extractTar(tar.NewReader(gzr), dest, skip)
 }

@@ -204,12 +204,12 @@ func (b *BoolOrString) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("bool_or_string must be bool or string, got %s", string(data))
 }
 
-// Bool returns the value as a bool. If it's a string, returns false.
+// Bool returns the value as a bool. If it's a string, returns true.
 func (b BoolOrString) Bool() bool {
 	if b.IsBool {
 		return b.BoolVal
 	}
-	return false
+	return true
 }
 
 // String returns the value as a string. If it's a bool, returns empty string.

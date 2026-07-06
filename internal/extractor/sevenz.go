@@ -21,7 +21,7 @@ func newSevenZExtractor(src string) *sevenZExtractor {
 	return &sevenZExtractor{src: src}
 }
 
-func (s *sevenZExtractor) Extract(excludeFileType []string, dest string) error {
+func (s *sevenZExtractor) Extract(skip skipper, dest string) error {
 	f, err := os.Open(s.src)
 	if err != nil {
 		return fmt.Errorf("open 7z %s: %w", s.src, err)
@@ -39,7 +39,7 @@ func (s *sevenZExtractor) Extract(excludeFileType []string, dest string) error {
 	}
 
 	for _, f := range r.File {
-		if shouldSkipFile(f.Name, excludeFileType) {
+		if skip.shouldSkipFile(f.Name) {
 			continue
 		}
 

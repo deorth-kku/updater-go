@@ -9,9 +9,13 @@ import (
 	"github.com/deorth-kku/updater-go/internal/config"
 )
 
+type skipper interface {
+	shouldSkipFile(string) bool
+}
+
 // Extractor defines the interface for archive extraction implementations.
 type Extractor interface {
-	Extract(excludeFileType []string, destDir string) error
+	Extract(filter skipper, destDir string) error
 }
 
 // Decompressor handles decompression by dispatching to the appropriate
@@ -48,23 +52,28 @@ func (d *Decompressor) Extract(srcPath, destDir string) error {
 	}
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
-		return extractWithSingleDir(ex, excludeFileType, destDir)
+		return extractWithSingleDir(ex, d.cfg.SingleDir, excludeFileType, destDir)
 	}
 
 	// Dispatch to the appropriate Extractor via registry lookup.
-	return ex.Extract(excludeFileType, destDir)
+	return ex.Extract(excludeSkipper(excludeFileType), destDir)
 }
 
 // extractWithSingleDir extracts to a temp dir, then if there's exactly one
 // subdirectory at the top level, moves its contents into destDir.
-func extractWithSingleDir(ex Extractor, excludeFileType []string, destDir string) error {
+func extractWithSingleDir(ex Extractor, prefix config.BoolOrString, excludeFileType []string, destDir string) error {
 	tmpDir, err := os.MkdirTemp("", "updater-extract-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	if err := ex.Extract(excludeFileType, tmpDir); err != nil {
+	skip := skipper(excludeSkipper(excludeFileType))
+	if prefix.String() != "" {
+		skip = mergeSkipper{skip, prefixSkipper(prefix.StringVal)}
+	}
+
+	if err := ex.Extract(skip, tmpDir); err != nil {
 		return err
 	}
 

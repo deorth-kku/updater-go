@@ -20,7 +20,7 @@ func newZipExtractor(src string) *zipExtractor {
 	return &zipExtractor{src: src}
 }
 
-func (z *zipExtractor) Extract(excludeFileType []string, dest string) error {
+func (z *zipExtractor) Extract(skip skipper, dest string) error {
 	r, err := zip.OpenReader(z.src)
 	if err != nil {
 		return fmt.Errorf("open zip %s: %w", z.src, err)
@@ -28,7 +28,7 @@ func (z *zipExtractor) Extract(excludeFileType []string, dest string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		if shouldSkipFile(f.Name, excludeFileType) {
+		if skip.shouldSkipFile(f.Name) {
 			continue
 		}
 
