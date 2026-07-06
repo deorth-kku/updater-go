@@ -1,42 +1,31 @@
 package extractor
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/bodgit/sevenzip"
 )
 
-// sevenZExtractor extracts .7z archives.
-type sevenZExtractor struct {
+// zipExtractor extracts .zip archives.
+type zipExtractor struct {
 	src string
 }
 
-// Ensure sevenZExtractor implements Extractor.
-var _ Extractor = (*sevenZExtractor)(nil)
+// Ensure zipExtractor implements Extractor.
+var _ Extractor = (*zipExtractor)(nil)
 
-func newSevenZExtractor(src string) *sevenZExtractor {
-	return &sevenZExtractor{src: src}
+func newZipExtractor(src string) *zipExtractor {
+	return &zipExtractor{src: src}
 }
 
-func (s *sevenZExtractor) Extract(excludeFileType []string, dest string) error {
-	f, err := os.Open(s.src)
+func (z *zipExtractor) Extract(excludeFileType []string, dest string) error {
+	r, err := zip.OpenReader(z.src)
 	if err != nil {
-		return fmt.Errorf("open 7z %s: %w", s.src, err)
+		return fmt.Errorf("open zip %s: %w", z.src, err)
 	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat 7z %s: %w", s.src, err)
-	}
-
-	r, err := sevenzip.NewReader(f, info.Size())
-	if err != nil {
-		return fmt.Errorf("open 7z %s: %w", s.src, err)
-	}
+	defer r.Close()
 
 	for _, f := range r.File {
 		if shouldSkipFile(f.Name, excludeFileType) {
@@ -46,7 +35,7 @@ func (s *sevenZExtractor) Extract(excludeFileType []string, dest string) error {
 		target := filepath.Join(dest, f.Name)
 
 		if !safePath(target, dest) {
-			return fmt.Errorf("invalid 7z entry: %s", f.Name)
+			return fmt.Errorf("invalid zip entry: %s", f.Name)
 		}
 
 		if f.FileInfo().IsDir() {
