@@ -158,28 +158,6 @@ func TestProjectConfigPath(t *testing.T) {
 	}
 }
 
-// collectJSONFiles walks all subdirectories under root and returns .json file paths.
-// Skips metadata.json which is an index file, not a project config.
-func collectJSONFiles(root string) ([]string, error) {
-	var files []string
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			subFiles, err := collectJSONFiles(filepath.Join(root, entry.Name()))
-			if err != nil {
-				return nil, err
-			}
-			files = append(files, subFiles...)
-		} else if filepath.Ext(entry.Name()) == ".json" && entry.Name() != "metadata.json" {
-			files = append(files, filepath.Join(root, entry.Name()))
-		}
-	}
-	return files, nil
-}
-
 // TestLoad_RealConfig_Unmarshal loads real project configs from all subdirectories of updater-config/.
 func TestLoad_RealConfig_Unmarshal(t *testing.T) {
 	subdirs, err := os.ReadDir(updaterConfigDir)

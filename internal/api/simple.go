@@ -269,6 +269,9 @@ func extractFilename(rawURL string) string {
 }
 
 func siteName(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return ""
@@ -277,11 +280,19 @@ func siteName(rawURL string) string {
 }
 
 func joinURL(base, rel string) string {
+	if base == "" {
+		return rel
+	}
 	u, err := url.Parse(base)
 	if err != nil {
 		return rel
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/" + rel
+	if strings.HasPrefix(rel, "/") {
+		// Absolute path: replace the base path entirely
+		u.Path = rel
+	} else {
+		u.Path = strings.TrimRight(u.Path, "/") + "/" + rel
+	}
 	return u.String()
 }
 
