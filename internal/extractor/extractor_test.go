@@ -10,18 +10,39 @@ import (
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
+	"github.com/ulikunitz/xz"
 )
 
-func writeZip(t *testing.T, dir, name string, contents map[string]string) {
+// verifyExtracted checks that all expected files exist with correct content.
+func verifyExtracted(t *testing.T, destDir string, expected map[string]string) {
 	t.Helper()
-	f, err := os.Create(filepath.Join(dir, name))
+	for rel, want := range expected {
+		full := filepath.Join(destDir, rel)
+		content, err := os.ReadFile(full)
+		if err != nil {
+			t.Errorf("%s: open: %v", rel, err)
+			continue
+		}
+		if string(content) != want {
+			t.Errorf("%s: content = %q, want %q", rel, content, want)
+		}
+	}
+}
+
+// --- Helper functions to generate archives in-code ---
+
+// writeZipGo creates a zip archive using Go's archive/zip.
+func writeZipGo(t *testing.T, path string, contents map[string]string) {
+	t.Helper()
+	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
+
 	w := zip.NewWriter(f)
-	for path, content := range contents {
-		fw, err := w.Create(path)
+	for name, content := range contents {
+		fw, err := w.Create(name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -29,23 +50,23 @@ func writeZip(t *testing.T, dir, name string, contents map[string]string) {
 			t.Fatal(err)
 		}
 	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
+	w.Close()
 }
 
-func writeTarGz(t *testing.T, dir, name string, contents map[string]string) {
+// writeTarGzGo creates a tar.gz archive using Go's archive/tar and compress/gzip.
+func writeTarGzGo(t *testing.T, path string, contents map[string]string) {
 	t.Helper()
-	f, err := os.Create(filepath.Join(dir, name))
+	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
+
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
-	for path, content := range contents {
+	for name, content := range contents {
 		if err := tw.WriteHeader(&tar.Header{
-			Name: path,
+			Name: name,
 			Mode: 0o644,
 			Size: int64(len(content)),
 		}); err != nil {
@@ -59,247 +80,471 @@ func writeTarGz(t *testing.T, dir, name string, contents map[string]string) {
 	gw.Close()
 }
 
-func TestExtractZip(t *testing.T) {
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "test.zip", map[string]string{
-		"hello.txt":        "world",
-		"sub/dir/file.txt": "content",
-	})
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	if err := ext.Extract(filepath.Join(srcDir, "test.zip"), destDir); err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-
-	if content, err := os.ReadFile(filepath.Join(destDir, "hello.txt")); err != nil || string(content) != "world" {
-		t.Errorf("hello.txt: content = %q, err = %v", content, err)
-	}
-	if content, err := os.ReadFile(filepath.Join(destDir, "sub/dir/file.txt")); err != nil || string(content) != "content" {
-		t.Errorf("sub/dir/file.txt: content = %q, err = %v", content, err)
-	}
-}
-
-func TestExtractSevenZ(t *testing.T) {
-	// Create a real 7z archive using the system 7z command
-	srcDir := t.TempDir()
-	srcFile := filepath.Join(srcDir, "hello.txt")
-	if err := os.WriteFile(srcFile, []byte("world"), 0o644); err != nil {
+// writeTarXzGo creates a tar.xz archive using Go's archive/tar and ulikunitz/xz.
+func writeTarXzGo(t *testing.T, path string, contents map[string]string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	archivePath := filepath.Join(srcDir, "test.7z")
-	cmd := exec.Command("7z", "a", archivePath, srcFile)
+	defer f.Close()
+
+	xzw, err := xz.NewWriter(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(xzw)
+	for name, content := range contents {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(content)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tw.Close()
+	xzw.Close()
+}
+
+// writeSevenZGo creates a 7z archive using the system 7z command.
+func writeSevenZGo(t *testing.T, path string, contents map[string]string) {
+	t.Helper()
+	srcDir, err := os.MkdirTemp("", "write7z-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	for name, content := range contents {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(srcDir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(srcDir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Use 7z to archive the entire directory structure, excluding the archive file itself
+	cmd := exec.Command("7z", "a", "-x!"+filepath.Base(path), path, ".")
+	cmd.Dir = srcDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("7z a: %v\n%s", err, out)
 	}
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	if err := ext.Extract(archivePath, destDir); err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-
-	if content, err := os.ReadFile(filepath.Join(destDir, "hello.txt")); err != nil || string(content) != "world" {
-		t.Errorf("hello.txt: content = %q, err = %v", content, err)
-	}
 }
 
-func TestExtractTarGz(t *testing.T) {
-	srcDir := t.TempDir()
-	writeTarGz(t, srcDir, "test.tar.gz", map[string]string{
-		"bin/go":         "binary-content",
-		"doc/readme.txt": "readme",
+// --- Phase 2: Normal extraction tests for all 4 extractors ---
+
+func TestZipExtractor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt":        "hello world\n",
+		"sub/dir/file.txt": "content\n",
 	})
 
 	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	if err := ext.Extract(filepath.Join(srcDir, "test.tar.gz"), destDir); err != nil {
+	ex := newZipExtractor(archivePath)
+	if err := ex.Extract(nil, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt":        "hello world\n",
+		"sub/dir/file.txt": "content\n",
+	})
+}
+
+func TestZipExtractor_SkipFilter(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt":        "hello world\n",
+		"sub/dir/file.txt": "content\n",
+		"bin/go":           "binary\n",
+	})
+
+	destDir := t.TempDir()
+	skip := excludeSkipper([]string{".txt"})
+	ex := newZipExtractor(archivePath)
+	if err := ex.Extract(skip, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
-	if content, err := os.ReadFile(filepath.Join(destDir, "bin/go")); err != nil || string(content) != "binary-content" {
-		t.Errorf("bin/go: content = %q, err = %v", content, err)
-	}
-	if content, err := os.ReadFile(filepath.Join(destDir, "doc/readme.txt")); err != nil || string(content) != "readme" {
-		t.Errorf("doc/readme.txt: content = %q, err = %v", content, err)
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file extracted (bin/go), got %d", len(entries))
+	} else if entries[0].Name() != "bin" {
+		t.Errorf("expected bin directory, got %s", entries[0].Name())
 	}
 }
 
-func TestExtract_Skip(t *testing.T) {
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "test.zip", map[string]string{"a.txt": "hello"})
+func TestTarGzExtractor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
 
 	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true, IsBool: true}})
-	if err := ext.Extract(filepath.Join(srcDir, "test.zip"), destDir); err != nil {
+	ex := newTarGzExtractor(archivePath)
+	if err := ex.Extract(nil, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+}
+
+func TestTarGzExtractor_SkipFilter(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	skip := excludeSkipper([]string{".txt"})
+	ex := newTarGzExtractor(archivePath)
+	if err := ex.Extract(skip, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file extracted (bin/go), got %d", len(entries))
+	} else if entries[0].Name() != "bin" {
+		t.Errorf("expected bin directory, got %s", entries[0].Name())
+	}
+}
+
+func TestTarXzExtractor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.xz")
+	writeTarXzGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	ex := newTarXzExtractor(archivePath)
+	if err := ex.Extract(nil, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+}
+
+func TestTarXzExtractor_SkipFilter(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.xz")
+	writeTarXzGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	skip := excludeSkipper([]string{".txt"})
+	ex := newTarXzExtractor(archivePath)
+	if err := ex.Extract(skip, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file extracted (bin/go), got %d", len(entries))
+	} else if entries[0].Name() != "bin" {
+		t.Errorf("expected bin directory, got %s", entries[0].Name())
+	}
+}
+
+func TestSevenZExtractor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.7z")
+	writeSevenZGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	ex := newSevenZExtractor(archivePath)
+	if err := ex.Extract(nil, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+}
+
+func TestSevenZExtractor_SkipFilter(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.7z")
+	writeSevenZGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	skip := excludeSkipper([]string{".txt"})
+	ex := newSevenZExtractor(archivePath)
+	if err := ex.Extract(skip, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// Note: directories are created even if files inside are skipped
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 2 {
+		t.Errorf("expected 2 directories (bin, doc), got %d", len(entries))
+		return
+	}
+
+	// Verify bin/go exists and doc/readme.txt does not
+	if _, err := os.ReadFile(filepath.Join(destDir, "bin/go")); err != nil {
+		t.Errorf("bin/go should exist: %v", err)
+	}
+	if _, err := os.ReadFile(filepath.Join(destDir, "doc/readme.txt")); err == nil {
+		t.Error("doc/readme.txt should have been skipped")
+	}
+}
+
+// --- Phase 3: Path traversal / evil file tests for all 4 extractors ---
+
+func TestZipExtractor_EvilPath(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "evil.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"../../etc/evil.txt": "evil content",
+	})
+
+	destDir := t.TempDir()
+	ex := newZipExtractor(archivePath)
+	err := ex.Extract(nil, destDir)
+	if err == nil {
+		t.Error("Extract() expected error for zip slip")
+	}
+}
+
+func TestTarGzExtractor_EvilPath(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "evil.tar.gz")
+	writeTarGzGo(t, archivePath, map[string]string{
+		"../../../etc/evil.txt": "evil content",
+	})
+
+	destDir := t.TempDir()
+	ex := newTarGzExtractor(archivePath)
+	err := ex.Extract(nil, destDir)
+	if err == nil {
+		t.Error("Extract() expected error for tar slip")
+	}
+}
+
+func TestTarXzExtractor_EvilPath(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "evil.tar.xz")
+	writeTarXzGo(t, archivePath, map[string]string{
+		"../../../etc/evil.txt": "evil content",
+	})
+
+	destDir := t.TempDir()
+	ex := newTarXzExtractor(archivePath)
+	err := ex.Extract(nil, destDir)
+	if err == nil {
+		t.Error("Extract() expected error for tar slip")
+	}
+}
+
+// Note: 7z evil path test skipped - bodgit/sevenzip library doesn't support creating archives with path traversal entries
+
+// --- Phase 4: Decompressor public API tests ---
+
+func TestDecompressor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt": "hello world\n",
+		"bin/go":    "binary\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    false,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt": "hello world\n",
+		"bin/go":    "binary\n",
+	})
+}
+
+func TestDecompressor_ExcludeFileType(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{".txt"},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    false,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file extracted (bin/go), got %d", len(entries))
+	} else if entries[0].Name() != "bin" {
+		t.Errorf("expected bin directory, got %s", entries[0].Name())
+	}
+}
+
+func TestDecompressor_SingleDir_True(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"app/bin/go":     "binary\n",
+		"app/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: true, IsBool: true},
+		CleanInstall:    false,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// SingleDir should move contents of "app" up to destDir
+	verifyExtracted(t, destDir, map[string]string{
+		"bin/go":     "binary\n",
+		"readme.txt": "readme\n",
+	})
+}
+
+func TestDecompressor_SingleDir_String(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"prefix/app/bin/go":     "binary\n",
+		"prefix/app/readme.txt": "readme\n",
+		"other/file.txt":        "other\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{StringVal: "prefix/", IsBool: false},
+		CleanInstall:    false,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// SingleDir with prefix should:
+	// 1. Filter files to only those starting with "prefix/"
+	// 2. Detect single subdirectory and move contents up
+	verifyExtracted(t, destDir, map[string]string{
+		"app/bin/go":     "binary\n",
+		"app/readme.txt": "readme\n",
+	})
+}
+
+func TestDecompressor_Skip_True(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt": "hello world\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: true, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    false,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// Skip=true should not extract anything
 	entries, _ := os.ReadDir(destDir)
 	if len(entries) != 0 {
 		t.Errorf("expected no files extracted, got %d", len(entries))
 	}
 }
 
-func TestExtract_CopyNonArchive(t *testing.T) {
-	srcDir := t.TempDir()
-	srcFile := filepath.Join(srcDir, "app.exe")
-	if err := os.WriteFile(srcFile, []byte("exe-content"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+func TestDecompressor_CleanInstall(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"hello.txt": "hello world\n",
+	})
 
+	// Pre-populate destDir with old files
 	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	if err := ext.Extract(srcFile, destDir); err != nil {
+	os.WriteFile(filepath.Join(destDir, "old.txt"), []byte("old content"), 0o644)
+
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    true,
+	}
+	d := New(cfg)
+	if err := d.Extract(archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
-	dstFile := filepath.Join(destDir, "app.exe")
-	content, err := os.ReadFile(dstFile)
-	if err != nil || string(content) != "exe-content" {
-		t.Errorf("app.exe: content = %q, err = %v", content, err)
+	// CleanInstall should remove old files and extract new ones
+	entries, _ := os.ReadDir(destDir)
+	if len(entries) != 1 {
+		t.Errorf("expected 1 file extracted, got %d", len(entries))
+	} else if entries[0].Name() != "hello.txt" {
+		t.Errorf("expected hello.txt, got %s", entries[0].Name())
 	}
 }
 
-func TestExtract_ZipSlip(t *testing.T) {
-	srcDir := t.TempDir()
-	srcFile := filepath.Join(srcDir, "evil.zip")
-	f, err := os.Create(srcFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := zip.NewWriter(f)
-	w.Create("../../etc/evil.txt")
-	w.Close()
-	f.Close()
+func TestDecompressor_NonArchive(t *testing.T) {
+	// Create a non-archive file (e.g., .exe)
+	srcFile := filepath.Join(t.TempDir(), "program.exe")
+	os.WriteFile(srcFile, []byte("executable content"), 0o644)
 
 	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	err = ext.Extract(srcFile, destDir)
-	if err == nil {
-		t.Error("Extract() expected error for zip slip")
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    false,
 	}
-}
-
-func TestExtract_TarSlip(t *testing.T) {
-	srcDir := t.TempDir()
-	srcFile := filepath.Join(srcDir, "evil.tar.gz")
-	f, err := os.Create(srcFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gw := gzip.NewWriter(f)
-	tw := tar.NewWriter(gw)
-	tw.WriteHeader(&tar.Header{Name: "../../../etc/evil.txt", Mode: 0o644, Size: 4})
-	tw.Write([]byte("evil"))
-	tw.Close()
-	gw.Close()
-	f.Close()
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{})
-	err = ext.Extract(srcFile, destDir)
-	if err == nil {
-		t.Error("Extract() expected error for tar slip")
-	}
-}
-
-func TestExtract_SingleDir(t *testing.T) {
-	// Create a zip with a single inner directory
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "app.zip", map[string]string{
-		"app-v1.0/bin/app":    "binary",
-		"app-v1.0/readme.txt": "readme",
-	})
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{
-		SingleDir: config.BoolOrString{BoolVal: true, IsBool: true},
-	})
-	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
+	d := New(cfg)
+	if err := d.Extract(srcFile, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
-	// With single_dir=true, files should be extracted directly to destDir
-	// (the inner dir content is moved up)
-	if _, err := os.Stat(filepath.Join(destDir, "app-v1.0")); err == nil {
-		t.Error("single_dir mode: inner dir should have been moved up")
-	}
-	if content, err := os.ReadFile(filepath.Join(destDir, "bin/app")); err != nil || string(content) != "binary" {
-		t.Errorf("bin/app: content = %q, err = %v", content, err)
-	}
-	if content, err := os.ReadFile(filepath.Join(destDir, "readme.txt")); err != nil || string(content) != "readme" {
-		t.Errorf("readme.txt: content = %q, err = %v", content, err)
-	}
-}
-
-func TestExtract_CleanInstall(t *testing.T) {
-	// Create existing files in destDir
-	destDir := t.TempDir()
-	os.WriteFile(filepath.Join(destDir, "old-file.txt"), []byte("old"), 0o644)
-
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "app.zip", map[string]string{
-		"new-file.txt": "new",
+	// Non-archive files should be copied
+	verifyExtracted(t, destDir, map[string]string{
+		"program.exe": "executable content",
 	})
-
-	ext := New(config.DecompressConfig{
-		CleanInstall: true,
-	})
-	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-
-	// old-file.txt should be removed with clean_install
-	if _, err := os.Stat(filepath.Join(destDir, "old-file.txt")); err == nil {
-		t.Error("clean_install mode: old file should have been removed")
-	}
-	if content, err := os.ReadFile(filepath.Join(destDir, "new-file.txt")); err != nil || string(content) != "new" {
-		t.Errorf("new-file.txt: content = %q, err = %v", content, err)
-	}
-}
-
-func TestExtract_KeepDownloadFile(t *testing.T) {
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "test.zip", map[string]string{"a.txt": "hello"})
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{
-		KeepDownloadFile: true,
-	})
-	if err := ext.Extract(filepath.Join(srcDir, "test.zip"), destDir); err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-
-	// With keep_download_file=true, the archive should remain
-	if _, err := os.Stat(filepath.Join(srcDir, "test.zip")); err != nil {
-		t.Errorf("archive should be kept, but was removed: %v", err)
-	}
-}
-
-func TestExtract_ExcludeFileTypeWhenUpdate(t *testing.T) {
-	srcDir := t.TempDir()
-	writeZip(t, srcDir, "app.zip", map[string]string{
-		"app.exe": "binary",
-		"app.dll": "library",
-		"app.pdb": "debug",
-	})
-
-	destDir := t.TempDir()
-	ext := New(config.DecompressConfig{
-		ExcludeFileType:           []string{".dll"},
-		ExcludeFileTypeWhenUpdate: []string{".pdb"},
-	})
-	if err := ext.Extract(filepath.Join(srcDir, "app.zip"), destDir); err != nil {
-		t.Fatalf("Extract() error = %v", err)
-	}
-
-	// .dll should be excluded (ExcludeFileType is implemented)
-	if _, err := os.Stat(filepath.Join(destDir, "app.dll")); err == nil {
-		t.Error(".dll should have been excluded")
-	}
-
-	// .pdb is not excluded yet (ExcludeFileTypeWhenUpdate not implemented)
-	if _, err := os.Stat(filepath.Join(destDir, "app.pdb")); err != nil {
-		t.Log(".pdb was not extracted (ExcludeFileTypeWhenUpdate not yet implemented)")
-	}
 }

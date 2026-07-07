@@ -28,7 +28,7 @@ func (z *zipExtractor) Extract(skip skipper, dest string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		if skip.shouldSkipFile(f.Name) {
+		if skip != nil && skip.shouldSkipFile(f.Name) {
 			continue
 		}
 

@@ -39,7 +39,7 @@ func (s *sevenZExtractor) Extract(skip skipper, dest string) error {
 	}
 
 	for _, f := range r.File {
-		if skip.shouldSkipFile(f.Name) {
+		if skip != nil && skip.shouldSkipFile(f.Name) {
 			continue
 		}
 

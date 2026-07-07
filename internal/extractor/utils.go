@@ -123,7 +123,7 @@ func extractTar(tr *tar.Reader, dest string, skip skipper) error {
 		}
 
 		// Skip files matching exclude_file_type
-		if skip.shouldSkipFile(header.Name) {
+		if skip != nil && skip.shouldSkipFile(header.Name) {
 			continue
 		}
 

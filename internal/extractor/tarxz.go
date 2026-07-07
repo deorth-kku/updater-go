@@ -34,3 +34,6 @@ func (t *tarXzExtractor) Extract(skip skipper, dest string) error {
 
 	return extractTar(tar.NewReader(xzr), dest, skip)
 }
+
+// Ensure tarXzExtractor implements Extractor.
+var _ Extractor = (*tarXzExtractor)(nil)
