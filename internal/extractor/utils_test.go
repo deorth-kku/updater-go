@@ -3,6 +3,7 @@ package extractor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -148,6 +149,144 @@ func TestMoveDirContents(t *testing.T) {
 	// Verify srcDir still exists but is empty
 	entries, _ := os.ReadDir(srcDir)
 	if len(entries) != 0 {
-		t.Errorf("srcDir should be empty after move, got %d entries", len(entries))
+		t.Errorf("srcDir not empty after move, got %d entries", len(entries))
+	}
+}
+
+func TestCopyDir(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create a nested directory structure
+	os.MkdirAll(filepath.Join(srcDir, "sub1", "sub2"), 0o755)
+	os.WriteFile(filepath.Join(srcDir, "sub1", "file1.txt"), []byte("file1"), 0o644)
+	os.WriteFile(filepath.Join(srcDir, "sub1", "sub2", "file2.txt"), []byte("file2"), 0o644)
+	os.WriteFile(filepath.Join(srcDir, "root.txt"), []byte("root"), 0o644)
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	// Verify root file
+	content, err := os.ReadFile(filepath.Join(dstDir, "root.txt"))
+	if err != nil {
+		t.Fatalf("read root.txt: %v", err)
+	}
+	if string(content) != "root" {
+		t.Errorf("root.txt content = %q, want %q", content, "root")
+	}
+
+	// Verify nested files
+	content, err = os.ReadFile(filepath.Join(dstDir, "sub1", "file1.txt"))
+	if err != nil {
+		t.Fatalf("read sub1/file1.txt: %v", err)
+	}
+	if string(content) != "file1" {
+		t.Errorf("sub1/file1.txt content = %q, want %q", content, "file1")
+	}
+
+	content, err = os.ReadFile(filepath.Join(dstDir, "sub1", "sub2", "file2.txt"))
+	if err != nil {
+		t.Fatalf("read sub1/sub2/file2.txt: %v", err)
+	}
+	if string(content) != "file2" {
+		t.Errorf("sub1/sub2/file2.txt content = %q, want %q", content, "file2")
+	}
+}
+
+func TestCopyDir_EmptyDir(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	entries, _ := os.ReadDir(dstDir)
+	if len(entries) != 0 {
+		t.Errorf("expected empty dstDir, got %d entries", len(entries))
+	}
+}
+
+func TestCopyDir_SourceNotFound(t *testing.T) {
+	err := copyDir("/nonexistent/dir", "/tmp/dst")
+	if err == nil {
+		t.Error("copyDir() expected error for nonexistent source")
+	}
+}
+
+// --- prefixSkipper / mergeSkipper tests ---
+
+type mockSkipper struct {
+	skipFn func(string) bool
+}
+
+func (m *mockSkipper) shouldSkipFile(name string) bool {
+	return m.skipFn(name)
+}
+
+func TestPrefixSkipper(t *testing.T) {
+	ps := prefixSkipper("app/")
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"app/file.txt", false},
+		{"app/sub/file.txt", false},
+		{"other/file.txt", true},
+		{"application/file.txt", true},
+		{"", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ps.shouldSkipFile(tt.name)
+			if got != tt.want {
+				t.Errorf("prefixSkipper(%q).shouldSkipFile() = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMergeSkipper(t *testing.T) {
+	// prefixSkipper skips files that DON'T have the prefix
+	ms := mergeSkipper{
+		&mockSkipper{skipFn: func(name string) bool { return !strings.HasPrefix(name, "app/") }},
+		&mockSkipper{skipFn: func(name string) bool { return strings.HasSuffix(name, ".tmp") }},
+	}
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"app/file.txt", false},  // has prefix, no .tmp suffix
+		{"app/file.tmp", true},   // has prefix, but has .tmp suffix
+		{"other/file.txt", true}, // no prefix
+		{"other/file.tmp", true}, // no prefix, has .tmp suffix
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ms.shouldSkipFile(tt.name)
+			if got != tt.want {
+				t.Errorf("mergeSkipper(%q).shouldSkipFile() = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMergeSkipper_Empty(t *testing.T) {
+	ms := mergeSkipper{}
+	if ms.shouldSkipFile("any/file.txt") {
+		t.Error("empty mergeSkipper should not skip any file")
+	}
+}
+
+func TestMergeSkipper_AllSkip(t *testing.T) {
+	ms := mergeSkipper{
+		&mockSkipper{skipFn: func(name string) bool { return true }},
+		&mockSkipper{skipFn: func(name string) bool { return true }},
+	}
+	if !ms.shouldSkipFile("any/file.txt") {
+		t.Error("mergeSkipper with all-true skipper should skip all files")
 	}
 }
