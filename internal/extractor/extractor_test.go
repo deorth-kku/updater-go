@@ -316,6 +316,78 @@ func TestSevenZExtractor_SkipFilter(t *testing.T) {
 	}
 }
 
+// --- SFX extractor tests ---
+
+// writeSfxGo creates an SFX executable using the system 7z command.
+func writeSfxGo(t *testing.T, path string, contents map[string]string) {
+	t.Helper()
+	srcDir, err := os.MkdirTemp("", "writesfx-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(srcDir)
+
+	for name, content := range contents {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(srcDir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(srcDir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 7z -sfx creates the archive in the current working directory (srcDir).
+	// We use a fixed output name and then rename it to the desired path.
+	cmd := exec.Command("7z", "a", "-sfx", "SFX_EXE", ".")
+	cmd.Dir = srcDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("7z a -sfx: %v\n%s", err, out)
+	}
+
+	// Move the created SFX file to the desired path
+	srcSfx := filepath.Join(srcDir, "SFX_EXE")
+	if err := os.Rename(srcSfx, path); err != nil {
+		t.Fatalf("rename sfx: %v", err)
+	}
+}
+
+func TestSfxExtractor_Extract(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.exe")
+	writeSfxGo(t, archivePath, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+
+	destDir := t.TempDir()
+	ex, err := newSfxExtracter(archivePath)
+	if err != nil {
+		t.Fatalf("newSfxExtracter() error = %v", err)
+	}
+	if err := ex.Extract(nil, destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyExtracted(t, destDir, map[string]string{
+		"hello.txt":      "hello world\n",
+		"bin/go":         "binary content\n",
+		"doc/readme.txt": "readme\n",
+	})
+}
+
+func TestSfxExtractor_NotASfx(t *testing.T) {
+	// Create a short text file with .exe extension — should not be detected as SFX
+	exePath := filepath.Join(t.TempDir(), "fake.exe")
+	os.WriteFile(exePath, []byte("this is just a short text file"), 0o644)
+
+	_, err := newSfxExtracter(exePath)
+	if err == nil {
+		t.Error("newSfxExtracter() expected errNotASfx for non-SFX file")
+	}
+	if err != errNotASfx {
+		t.Errorf("newSfxExtracter() error = %v, want %v", err, errNotASfx)
+	}
+}
+
 // --- Phase 3: Path traversal / evil file tests for all 4 extractors ---
 
 func TestZipExtractor_EvilPath(t *testing.T) {

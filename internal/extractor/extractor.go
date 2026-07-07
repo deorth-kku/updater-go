@@ -109,6 +109,12 @@ func newExtractor(ext, srcPath string) Extractor {
 		return newTarXzExtractor(srcPath)
 	case ".7z":
 		return newSevenZExtractor(srcPath)
+	case ".exe":
+		ex, err := newSfxExtracter(srcPath)
+		if err == nil {
+			return ex
+		}
+		fallthrough
 	default:
 		return nil
 	}

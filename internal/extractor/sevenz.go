@@ -21,21 +21,10 @@ func newSevenZExtractor(src string) *sevenZExtractor {
 	return &sevenZExtractor{src: src}
 }
 
-func (s *sevenZExtractor) Extract(skip skipper, dest string) error {
-	f, err := os.Open(s.src)
+func extract7zraw(f io.ReaderAt, size int64, skip skipper, dest string) error {
+	r, err := sevenzip.NewReader(f, size)
 	if err != nil {
-		return fmt.Errorf("open 7z %s: %w", s.src, err)
-	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat 7z %s: %w", s.src, err)
-	}
-
-	r, err := sevenzip.NewReader(f, info.Size())
-	if err != nil {
-		return fmt.Errorf("open 7z %s: %w", s.src, err)
+		return fmt.Errorf("create 7z reader: %w", err)
 	}
 
 	for _, f := range r.File {
@@ -79,4 +68,19 @@ func (s *sevenZExtractor) Extract(skip skipper, dest string) error {
 		}
 	}
 	return nil
+}
+
+func (s *sevenZExtractor) Extract(skip skipper, dest string) error {
+	f, err := os.Open(s.src)
+	if err != nil {
+		return fmt.Errorf("open 7z %s: %w", s.src, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat 7z %s: %w", s.src, err)
+	}
+
+	return extract7zraw(f, info.Size(), skip, dest)
 }
