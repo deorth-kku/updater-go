@@ -301,7 +301,10 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 
 func isArchive(ext string) bool {
 	switch ext {
-	case ".zip", ".tar.gz", ".tgz", ".tar.xz", ".txz":
+	case ".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz", ".tbz2",
+		".tar.zst", ".tzst", ".tar.lz4", ".tar.lz", ".tar.br", ".tar.z", ".tar.lzma",
+		".7z", ".rar", ".gz", ".bz2", ".zst", ".lz4", ".sz", ".s2", ".br", ".z", ".lz",
+		".lzma", ".xz", ".zlib", ".exe":
 		return true
 	}
 	return false

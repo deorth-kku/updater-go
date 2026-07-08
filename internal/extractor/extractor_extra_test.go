@@ -1,11 +1,13 @@
 package extractor
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
+	"github.com/mholt/archives"
 )
 
 // --- Decompressor Nop tests ---
@@ -113,70 +115,97 @@ func TestDecompressor_SingleDir_NoSingleDir(t *testing.T) {
 	}
 }
 
-// --- newExtractor tests ---
+// --- Identify tests ---
 
-func TestNewExtractor_Zip(t *testing.T) {
-	ex := newExtractor(".zip", "/tmp/test.zip")
-	if ex == nil {
-		t.Error("newExtractor(.zip) should return non-nil")
+func TestIdentify_Zip(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{"hello.txt": "hello\n"})
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	if err != nil {
+		t.Fatalf("Identify() error = %v", err)
+	}
+	if _, ok := format.(archives.Extractor); !ok {
+		t.Error("Identify(.zip) should return an archives.Extractor")
 	}
 }
 
-func TestNewExtractor_TarGz(t *testing.T) {
-	ex := newExtractor(".tar.gz", "/tmp/test.tar.gz")
-	if ex == nil {
-		t.Error("newExtractor(.tar.gz) should return non-nil")
+func TestIdentify_TarGz(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzGo(t, archivePath, map[string]string{"hello.txt": "hello\n"})
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	if err != nil {
+		t.Fatalf("Identify() error = %v", err)
+	}
+	if _, ok := format.(archives.Extractor); !ok {
+		t.Error("Identify(.tar.gz) should return an archives.Extractor")
 	}
 }
 
-func TestNewExtractor_TarXz(t *testing.T) {
-	ex := newExtractor(".tar.xz", "/tmp/test.tar.xz")
-	if ex == nil {
-		t.Error("newExtractor(.tar.xz) should return non-nil")
+func TestIdentify_TarXz(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.xz")
+	writeTarXzGo(t, archivePath, map[string]string{"hello.txt": "hello\n"})
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	if err != nil {
+		t.Fatalf("Identify() error = %v", err)
+	}
+	if _, ok := format.(archives.Extractor); !ok {
+		t.Error("Identify(.tar.xz) should return an archives.Extractor")
 	}
 }
 
-func TestNewExtractor_Tgz(t *testing.T) {
-	ex := newExtractor(".tgz", "/tmp/test.tgz")
-	if ex == nil {
-		t.Error("newExtractor(.tgz) should return non-nil")
+func TestIdentify_SevenZ(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.7z")
+	writeSevenZGo(t, archivePath, map[string]string{"hello.txt": "hello\n"})
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	if err != nil {
+		t.Fatalf("Identify() error = %v", err)
+	}
+	if _, ok := format.(archives.Extractor); !ok {
+		t.Error("Identify(.7z) should return an archives.Extractor")
 	}
 }
 
-func TestNewExtractor_Txz(t *testing.T) {
-	ex := newExtractor(".txz", "/tmp/test.txz")
-	if ex == nil {
-		t.Error("newExtractor(.txz) should return non-nil")
-	}
-}
-
-func TestNewExtractor_SevenZ(t *testing.T) {
-	ex := newExtractor(".7z", "/tmp/test.7z")
-	if ex == nil {
-		t.Error("newExtractor(.7z) should return non-nil")
-	}
-}
-
-func TestNewExtractor_Exe(t *testing.T) {
-	// .exe that is not an SFX should return nil (falls through to default)
+func TestIdentify_NonArchive(t *testing.T) {
+	// A plain .exe with no embedded archive should not match any format.
 	nonSfxPath := filepath.Join(t.TempDir(), "fake.exe")
 	os.WriteFile(nonSfxPath, []byte("not an sfx"), 0o644)
-	ex := newExtractor(".exe", nonSfxPath)
-	if ex != nil {
-		t.Error("newExtractor(.exe) for non-SFX file should return nil")
-	}
-}
 
-func TestNewExtractor_Unsupported(t *testing.T) {
-	ex := newExtractor(".rar", "/tmp/test.rar")
-	if ex != nil {
-		t.Error("newExtractor(.rar) should return nil for unsupported format")
+	f, err := os.Open(nonSfxPath)
+	if err != nil {
+		t.Fatal(err)
 	}
-}
+	defer f.Close()
 
-func TestNewExtractor_Empty(t *testing.T) {
-	ex := newExtractor("", "/tmp/test")
-	if ex != nil {
-		t.Error("newExtractor(\"\") should return nil")
+	_, _, err = archives.Identify(context.Background(), filepath.Base(nonSfxPath), f)
+	if err != archives.NoMatch {
+		t.Errorf("Identify() for non-SFX .exe should return NoMatch, got %v", err)
 	}
 }

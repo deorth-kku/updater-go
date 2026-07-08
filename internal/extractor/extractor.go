@@ -2,24 +2,22 @@
 package extractor
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/deorth-kku/updater-go/internal/config"
+	"github.com/mholt/archives"
 )
 
 type skipper interface {
 	shouldSkipFile(string) bool
 }
 
-// Extractor defines the interface for archive extraction implementations.
-type Extractor interface {
-	Extract(filter skipper, destDir string) error
-}
-
 // Decompressor handles decompression by dispatching to the appropriate
-// Extractor based on the file extension.
+// archive format, which is auto-detected via github.com/mholt/archives.
 type Decompressor struct {
 	cfg config.DecompressConfig
 }
@@ -42,38 +40,33 @@ func (d *Decompressor) Extract(srcPath, destDir string) error {
 		}
 	}
 
-	ext := detectExt(srcPath)
 	excludeFileType := d.cfg.ExcludeFileType
+	skip := excludeSkipper(excludeFileType)
 
-	ex := newExtractor(ext, srcPath)
-	if ex == nil {
-		// For non-archive files (.exe, .apk, .dmg, etc.) — just copy the file.
-		return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
-	}
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
-		return extractWithSingleDir(ex, d.cfg.SingleDir, excludeFileType, destDir)
+		return extractWithSingleDir(srcPath, d.cfg.SingleDir, skip, destDir)
 	}
 
-	// Dispatch to the appropriate Extractor via registry lookup.
-	return ex.Extract(excludeSkipper(excludeFileType), destDir)
+	// Dispatch to the appropriate format via auto-detection.
+	return extractFile(srcPath, destDir, skip)
 }
 
 // extractWithSingleDir extracts to a temp dir, then if there's exactly one
 // subdirectory at the top level, moves its contents into destDir.
-func extractWithSingleDir(ex Extractor, prefix config.BoolOrString, excludeFileType []string, destDir string) error {
+func extractWithSingleDir(srcPath string, prefix config.BoolOrString, skip skipper, destDir string) error {
 	tmpDir, err := os.MkdirTemp("", "updater-extract-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	skip := skipper(excludeSkipper(excludeFileType))
+	s := skipper(skip)
 	if prefix.String() != "" {
-		skip = mergeSkipper{skip, prefixSkipper(prefix.StringVal)}
+		s = mergeSkipper{s, prefixSkipper(prefix.StringVal)}
 	}
 
-	if err := ex.Extract(skip, tmpDir); err != nil {
+	if err := extractFile(srcPath, tmpDir, s); err != nil {
 		return err
 	}
 
@@ -97,25 +90,91 @@ func extractWithSingleDir(ex Extractor, prefix config.BoolOrString, excludeFileT
 	return moveDirContents(tmpDir, destDir)
 }
 
-// newExtractor returns the appropriate Extractor for the given extension and source path.
-// Returns nil if the extension is not supported.
-func newExtractor(ext, srcPath string) Extractor {
-	switch ext {
-	case ".zip":
-		return newZipExtractor(srcPath)
-	case ".tar.gz", ".tgz":
-		return newTarGzExtractor(srcPath)
-	case ".tar.xz", ".txz":
-		return newTarXzExtractor(srcPath)
-	case ".7z":
-		return newSevenZExtractor(srcPath)
-	case ".exe":
-		ex, err := newSfxExtracter(srcPath)
-		if err == nil {
-			return ex
+// extractFile extracts (or copies) srcPath into destDir, auto-detecting the
+// archive format. Non-archive files are copied verbatim into destDir.
+func extractFile(srcPath, destDir string, skip skipper) error {
+	ctx := context.Background()
+
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", srcPath, err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", srcPath, err)
+	}
+
+	// Self-extracting 7z archive: the 7z payload is embedded after an
+	// executable stub, so format detection by header fails. Scan for the 7z
+	// signature and extract the embedded payload directly.
+	if offset, ok := findSfxOffset(f); ok {
+		sr := io.NewSectionReader(f, offset, info.Size()-offset)
+		return archives.SevenZip{}.Extract(ctx, sr, makeHandler(destDir, skip))
+	}
+
+	// Reset to start for format identification.
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek %s: %w", srcPath, err)
+	}
+
+	format, _, err := archives.Identify(ctx, filepath.Base(srcPath), f)
+	if err != nil {
+		if err == archives.NoMatch {
+			// Non-archive file (.exe, .apk, .dmg, ...) — copy it as-is.
+			return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
 		}
-		fallthrough
-	default:
+		return fmt.Errorf("identify %s: %w", srcPath, err)
+	}
+
+	ex, ok := format.(archives.Extractor)
+	if !ok {
+		return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
+	}
+
+	return ex.Extract(ctx, f, makeHandler(destDir, skip))
+}
+
+// makeHandler returns an archives.FileHandler that writes each archive entry
+// into destDir, honoring the skip filter and guarding against path traversal.
+func makeHandler(destDir string, skip skipper) archives.FileHandler {
+	return func(ctx context.Context, fi archives.FileInfo) error {
+		name := fi.NameInArchive
+		if skip != nil && skip.shouldSkipFile(name) {
+			return nil
+		}
+
+		target := filepath.Join(destDir, name)
+
+		// Security: prevent archive slip / path traversal.
+		if !safePath(target, destDir) {
+			return fmt.Errorf("invalid archive entry: %s", name)
+		}
+
+		if fi.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+
+		rc, err := fi.Open()
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, rc); err != nil {
+			return err
+		}
 		return nil
 	}
 }

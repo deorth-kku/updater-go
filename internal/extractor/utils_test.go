@@ -7,33 +7,6 @@ import (
 	"testing"
 )
 
-func TestDetectExt(t *testing.T) {
-	tests := []struct {
-		path string
-		want string
-	}{
-		{"/path/to/file.zip", ".zip"},
-		{"/path/to/file.tar.gz", ".tar.gz"},
-		{"/path/to/file.TAR.GZ", ".tar.gz"},
-		{"/path/to/file.tgz", ".tgz"},
-		{"/path/to/file.tar.xz", ".tar.xz"},
-		{"/path/to/file.txz", ".txz"},
-		{"/path/to/file.7z", ".7z"},
-		{"/path/to/file.exe", ".exe"},
-		{"/path/to/file.APK", ".apk"},
-		{"/path/to/file", ""},
-		{"/path/to/file.tar.gz.bak", ".bak"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			got := detectExt(tt.path)
-			if got != tt.want {
-				t.Errorf("detectExt(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSafePath(t *testing.T) {
 	tests := []struct {
 		target string

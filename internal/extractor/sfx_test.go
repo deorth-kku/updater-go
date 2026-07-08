@@ -1,14 +1,13 @@
 package extractor
 
 import (
-	"bytes"
 	"os"
 	"testing"
 )
 
-func TestSfxExtracter_ReadAt(t *testing.T) {
+func TestFindSfxOffset(t *testing.T) {
 	// Create a fake SFX file with magic number followed by data
-	magic := []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04}
+	magic := sevenZipMagic
 	payload := []byte("7z payload data here")
 	fakeSfx := append(magic, payload...)
 
@@ -18,29 +17,27 @@ func TestSfxExtracter_ReadAt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ex, err := newSfxExtracter(sfxPath)
+	f, err := os.Open(sfxPath)
 	if err != nil {
-		t.Fatalf("newSfxExtracter() error = %v", err)
+		t.Fatal(err)
 	}
+	defer f.Close()
 
-	// ReadAt reads from the magic offset (position 0), so it reads from the start of the file
-	buf := make([]byte, 8)
-	n, err := ex.ReadAt(buf, 0)
-	if err != nil {
-		t.Fatalf("ReadAt() error = %v", err)
+	offset, ok := findSfxOffset(f)
+	if !ok {
+		t.Fatal("findSfxOffset() expected to find the 7z signature")
 	}
-	if n != 8 {
-		t.Errorf("ReadAt() n = %d, want 8", n)
-	}
-	if !bytes.Equal(buf, magic) {
-		t.Errorf("ReadAt() = %q, want magic bytes", buf)
+	if offset != 0 {
+		t.Errorf("findSfxOffset() = %d, want 0", offset)
 	}
 }
 
-func TestSfxExtracter_ReadAt_Offset(t *testing.T) {
-	magic := []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04}
+func TestFindSfxOffset_WithStub(t *testing.T) {
+	// 7z signature embedded after an executable stub
+	stub := []byte("MZ\x90\x00this is an executable stub of some length")
+	magic := sevenZipMagic
 	payload := []byte("0123456789ABCDEF")
-	fakeSfx := append(magic, payload...)
+	fakeSfx := append(append(stub, magic...), payload...)
 
 	tmpDir := t.TempDir()
 	sfxPath := tmpDir + "/test.exe"
@@ -48,26 +45,22 @@ func TestSfxExtracter_ReadAt_Offset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ex, err := newSfxExtracter(sfxPath)
+	f, err := os.Open(sfxPath)
 	if err != nil {
-		t.Fatalf("newSfxExtracter() error = %v", err)
+		t.Fatal(err)
 	}
+	defer f.Close()
 
-	// Read at offset 8 should read from position 8 (after magic)
-	buf := make([]byte, 4)
-	n, err := ex.ReadAt(buf, 8)
-	if err != nil {
-		t.Fatalf("ReadAt() error = %v", err)
+	offset, ok := findSfxOffset(f)
+	if !ok {
+		t.Fatal("findSfxOffset() expected to find the embedded 7z signature")
 	}
-	if n != 4 {
-		t.Errorf("ReadAt() n = %d, want 4", n)
-	}
-	if string(buf) != "0123" {
-		t.Errorf("ReadAt() = %q, want %q", buf, "0123")
+	if offset != int64(len(stub)) {
+		t.Errorf("findSfxOffset() = %d, want %d", offset, len(stub))
 	}
 }
 
-func TestSfxExtracter_NotASfx(t *testing.T) {
+func TestFindSfxOffset_NotASfx(t *testing.T) {
 	// File without magic number
 	tmpDir := t.TempDir()
 	badPath := tmpDir + "/not_sfx.exe"
@@ -75,15 +68,21 @@ func TestSfxExtracter_NotASfx(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := newSfxExtracter(badPath)
-	if err == nil {
-		t.Error("newSfxExtracter() expected error for non-SFX file")
+	f, err := os.Open(badPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	if _, ok := findSfxOffset(f); ok {
+		t.Error("findSfxOffset() expected false for non-SFX file")
 	}
 }
 
-func TestSfxExtracter_FileNotFound(t *testing.T) {
-	_, err := newSfxExtracter("/nonexistent/file.exe")
+func TestFindSfxOffset_FileNotFound(t *testing.T) {
+	f, err := os.Open("/nonexistent/file.exe")
 	if err == nil {
-		t.Error("newSfxExtracter() expected error for nonexistent file")
+		f.Close()
+		t.Fatal("expected error opening nonexistent file")
 	}
 }

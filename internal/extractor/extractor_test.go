@@ -146,8 +146,7 @@ func TestZipExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newZipExtractor(archivePath)
-	if err := ex.Extract(nil, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -166,8 +165,7 @@ func TestZipExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	ex := newZipExtractor(archivePath)
-	if err := ex.Extract(skip, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -188,8 +186,7 @@ func TestTarGzExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newTarGzExtractor(archivePath)
-	if err := ex.Extract(nil, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -209,8 +206,7 @@ func TestTarGzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	ex := newTarGzExtractor(archivePath)
-	if err := ex.Extract(skip, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -231,8 +227,7 @@ func TestTarXzExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newTarXzExtractor(archivePath)
-	if err := ex.Extract(nil, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -252,8 +247,7 @@ func TestTarXzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	ex := newTarXzExtractor(archivePath)
-	if err := ex.Extract(skip, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -274,8 +268,7 @@ func TestSevenZExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newSevenZExtractor(archivePath)
-	if err := ex.Extract(nil, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -295,8 +288,7 @@ func TestSevenZExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	ex := newSevenZExtractor(archivePath)
-	if err := ex.Extract(skip, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -360,11 +352,7 @@ func TestSfxExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex, err := newSfxExtracter(archivePath)
-	if err != nil {
-		t.Fatalf("newSfxExtracter() error = %v", err)
-	}
-	if err := ex.Extract(nil, destDir); err != nil {
+	if err := extractFile(archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -379,12 +367,13 @@ func TestSfxExtractor_NotASfx(t *testing.T) {
 	exePath := filepath.Join(t.TempDir(), "fake.exe")
 	os.WriteFile(exePath, []byte("this is just a short text file"), 0o644)
 
-	_, err := newSfxExtracter(exePath)
-	if err == nil {
-		t.Error("newSfxExtracter() expected errNotASfx for non-SFX file")
+	destDir := t.TempDir()
+	// A non-SFX .exe is a non-archive file and should be copied verbatim.
+	if err := extractFile(exePath, destDir, nil); err != nil {
+		t.Fatalf("Extract() error = %v", err)
 	}
-	if err != errNotASfx {
-		t.Errorf("newSfxExtracter() error = %v, want %v", err, errNotASfx)
+	if _, err := os.Stat(filepath.Join(destDir, "fake.exe")); err != nil {
+		t.Errorf("non-SFX .exe should be copied as-is: %v", err)
 	}
 }
 
@@ -397,8 +386,7 @@ func TestZipExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newZipExtractor(archivePath)
-	err := ex.Extract(nil, destDir)
+	err := extractFile(archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for zip slip")
 	}
@@ -411,8 +399,7 @@ func TestTarGzExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newTarGzExtractor(archivePath)
-	err := ex.Extract(nil, destDir)
+	err := extractFile(archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for tar slip")
 	}
@@ -425,8 +412,7 @@ func TestTarXzExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	ex := newTarXzExtractor(archivePath)
-	err := ex.Extract(nil, destDir)
+	err := extractFile(archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for tar slip")
 	}

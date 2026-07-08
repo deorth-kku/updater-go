@@ -1,30 +1,12 @@
 package extractor
 
 import (
-	"archive/tar"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-// detectExt detects the archive extension, handling compound extensions like .tar.gz.
-func detectExt(path string) string {
-	lower := strings.ToLower(path)
-	switch {
-	case strings.HasSuffix(lower, ".tar.gz"):
-		return ".tar.gz"
-	case strings.HasSuffix(lower, ".tgz"):
-		return ".tgz"
-	case strings.HasSuffix(lower, ".tar.xz"):
-		return ".tar.xz"
-	case strings.HasSuffix(lower, ".txz"):
-		return ".txz"
-	default:
-		return filepath.Ext(lower)
-	}
-}
 
 // safePath checks if target is safely within dest (prevents path traversal).
 func safePath(target, dest string) bool {
@@ -106,56 +88,6 @@ func cleanInstall(destDir string) error {
 		path := filepath.Join(destDir, entry.Name())
 		if err := os.RemoveAll(path); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// extractTar is the common tar extraction logic shared by tar.gz and tar.xz.
-func extractTar(tr *tar.Reader, dest string, skip skipper) error {
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		// Skip files matching exclude_file_type
-		if skip != nil && skip.shouldSkipFile(header.Name) {
-			continue
-		}
-
-		target := filepath.Join(dest, header.Name)
-
-		// Security: prevent tar slip
-		// filepath.Join cleans the path, so we check the raw name for ..
-		if strings.Contains(header.Name, "..") {
-			return fmt.Errorf("invalid tar entry: %s", header.Name)
-		}
-		if !safePath(target, dest) {
-			return fmt.Errorf("invalid tar entry: %s", header.Name)
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			outFile, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
-				return err
-			}
-			outFile.Close()
 		}
 	}
 	return nil
