@@ -64,7 +64,7 @@ func TestGitHubAPI_Latest(t *testing.T) {
 		ProjectName: "git",
 	}, mdl)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -132,7 +132,7 @@ func TestAppveyorAPI_Latest(t *testing.T) {
 		ProjectName: "mikumikulibrary",
 	}, mdl)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -156,7 +156,7 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 
 	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, mdl)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -207,7 +207,7 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 		mdl,
 	)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -272,7 +272,7 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 	}, mdl)
 	api.SetNoPull(true)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -314,7 +314,7 @@ func TestAppveyorAPI_BranchFilter(t *testing.T) {
 	}, mdl)
 	api.SetBranch("main")
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
@@ -400,7 +400,7 @@ func TestApiJsonAPI_VersionExtraction(t *testing.T) {
 		mdl,
 	)
 
-	rel, err := api.Latest(context.Background())
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}

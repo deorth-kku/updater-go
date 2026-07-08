@@ -146,7 +146,7 @@ func TestZipExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	if err := extractFile(archivePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -165,7 +165,7 @@ func TestZipExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	if err := extractFile(archivePath, destDir, skip); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -186,7 +186,7 @@ func TestTarGzExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	if err := extractFile(archivePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -206,7 +206,7 @@ func TestTarGzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	if err := extractFile(archivePath, destDir, skip); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -227,7 +227,7 @@ func TestTarXzExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	if err := extractFile(archivePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -247,7 +247,7 @@ func TestTarXzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	if err := extractFile(archivePath, destDir, skip); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -268,7 +268,7 @@ func TestSevenZExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	if err := extractFile(archivePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -288,7 +288,7 @@ func TestSevenZExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	skip := excludeSkipper([]string{".txt"})
-	if err := extractFile(archivePath, destDir, skip); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, skip); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -352,7 +352,7 @@ func TestSfxExtractor_Extract(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	if err := extractFile(archivePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), archivePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -369,7 +369,7 @@ func TestSfxExtractor_NotASfx(t *testing.T) {
 
 	destDir := t.TempDir()
 	// A non-SFX .exe is a non-archive file and should be copied verbatim.
-	if err := extractFile(exePath, destDir, nil); err != nil {
+	if err := extractFile(t.Context(), exePath, destDir, nil); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(destDir, "fake.exe")); err != nil {
@@ -386,7 +386,7 @@ func TestZipExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	err := extractFile(archivePath, destDir, nil)
+	err := extractFile(t.Context(), archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for zip slip")
 	}
@@ -399,7 +399,7 @@ func TestTarGzExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	err := extractFile(archivePath, destDir, nil)
+	err := extractFile(t.Context(), archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for tar slip")
 	}
@@ -412,7 +412,7 @@ func TestTarXzExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	err := extractFile(archivePath, destDir, nil)
+	err := extractFile(t.Context(), archivePath, destDir, nil)
 	if err == nil {
 		t.Error("Extract() expected error for tar slip")
 	}
@@ -437,7 +437,7 @@ func TestDecompressor_Extract(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 	verifyExtracted(t, destDir, map[string]string{
@@ -462,7 +462,7 @@ func TestDecompressor_ExcludeFileType(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -489,7 +489,7 @@ func TestDecompressor_SingleDir_True(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -516,7 +516,7 @@ func TestDecompressor_SingleDir_String(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -543,7 +543,7 @@ func TestDecompressor_Skip_True(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -571,7 +571,7 @@ func TestDecompressor_CleanInstall(t *testing.T) {
 		CleanInstall:    true,
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -597,7 +597,7 @@ func TestDecompressor_NonArchive(t *testing.T) {
 		CleanInstall:    false,
 	}
 	d := New(cfg)
-	if err := d.Extract(srcFile, destDir); err != nil {
+	if err := d.Extract(t.Context(), srcFile, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 

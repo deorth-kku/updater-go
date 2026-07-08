@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +14,7 @@ func TestBuildFromDirectURL_Basic(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), "https://example.com/v1.0.0/app.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v1.0.0/app.zip")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -35,7 +34,7 @@ func TestBuildFromDirectURL_WithVersionRegex(t *testing.T) {
 		},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), "https://example.com/v2.1.3.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v2.1.3.zip")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -52,7 +51,7 @@ func TestBuildFromDirectURL_WithFilenameOverride(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), "https://example.com/whatever/file.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/whatever/file.zip")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -81,7 +80,7 @@ func TestBuildFromDirectURL_WithRedirect(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), serverURL+"/original")
+	release, err := s.buildFromDirectURL(t.Context(), serverURL+"/original")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -104,7 +103,7 @@ func TestBuildFromDirectURL_RedirectFail(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), server.URL+"/broken")
+	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/broken")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -125,7 +124,7 @@ func TestBuildFromDirectURL_FilenameOverrideWithVersion(t *testing.T) {
 		},
 	}
 
-	release, err := s.buildFromDirectURL(context.Background(), "https://example.com/v3.2.1.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v3.2.1.zip")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}

@@ -105,7 +105,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		ext := strings.ToLower(filepath.Ext(localPath))
 		if isArchive(ext) {
 			extDest := strings.TrimSuffix(localPath, ext)
-			if err := extractor.New(u.projectCfg.Decompress).Extract(localPath, extDest); err != nil {
+			if err := extractor.New(u.projectCfg.Decompress).Extract(ctx, localPath, extDest); err != nil {
 				result.Error = fmt.Errorf("extract: %w", err)
 				return result
 			}

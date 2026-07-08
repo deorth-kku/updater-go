@@ -28,7 +28,7 @@ func New(cfg config.DecompressConfig) *Decompressor {
 }
 
 // Extract decompresses the given file to the destination directory.
-func (d *Decompressor) Extract(srcPath, destDir string) error {
+func (d *Decompressor) Extract(ctx context.Context, srcPath, destDir string) error {
 	if d.cfg.Skip.Bool() {
 		return nil
 	}
@@ -45,16 +45,16 @@ func (d *Decompressor) Extract(srcPath, destDir string) error {
 
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
-		return extractWithSingleDir(srcPath, d.cfg.SingleDir, skip, destDir)
+		return extractWithSingleDir(ctx, srcPath, d.cfg.SingleDir, skip, destDir)
 	}
 
 	// Dispatch to the appropriate format via auto-detection.
-	return extractFile(srcPath, destDir, skip)
+	return extractFile(ctx, srcPath, destDir, skip)
 }
 
 // extractWithSingleDir extracts to a temp dir, then if there's exactly one
 // subdirectory at the top level, moves its contents into destDir.
-func extractWithSingleDir(srcPath string, prefix config.BoolOrString, skip skipper, destDir string) error {
+func extractWithSingleDir(ctx context.Context, srcPath string, prefix config.BoolOrString, skip skipper, destDir string) error {
 	tmpDir, err := os.MkdirTemp("", "updater-extract-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
@@ -66,7 +66,7 @@ func extractWithSingleDir(srcPath string, prefix config.BoolOrString, skip skipp
 		s = mergeSkipper{s, prefixSkipper(prefix.StringVal)}
 	}
 
-	if err := extractFile(srcPath, tmpDir, s); err != nil {
+	if err := extractFile(ctx, srcPath, tmpDir, s); err != nil {
 		return err
 	}
 
@@ -92,8 +92,7 @@ func extractWithSingleDir(srcPath string, prefix config.BoolOrString, skip skipp
 
 // extractFile extracts (or copies) srcPath into destDir, auto-detecting the
 // archive format. Non-archive files are copied verbatim into destDir.
-func extractFile(srcPath, destDir string, skip skipper) error {
-	ctx := context.Background()
+func extractFile(ctx context.Context, srcPath, destDir string, skip skipper) error {
 
 	f, err := os.Open(srcPath)
 	if err != nil {

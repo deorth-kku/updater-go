@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -22,12 +21,12 @@ func TestStore_EnsureLocalConfig_NotFound(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
 	// Try to ensure local config for a project not in metadata
-	err := store.EnsureLocalConfig(context.Background(), "nonexistent")
+	err := store.EnsureLocalConfig(t.Context(), "nonexistent")
 	if err == nil {
 		t.Error("EnsureLocalConfig() should return error for nonexistent project")
 	}
@@ -48,14 +47,14 @@ func TestStore_EnsureLocalConfig_DownloadsNewConfig(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
 	tmpDir := t.TempDir()
 	store.SetLocalConfigDir(tmpDir)
 
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -79,7 +78,7 @@ func TestStore_EnsureLocalConfig_LocalConfigExists(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -91,7 +90,7 @@ func TestStore_EnsureLocalConfig_LocalConfigExists(t *testing.T) {
 	os.WriteFile(cfgPath, []byte(`{"basic": {"api_type": "github"}}`), 0o644)
 
 	// Should not error even though remote is newer (we're just testing it doesn't crash)
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -134,7 +133,7 @@ func TestStore_EnsureLocalConfig_LocalConfigUpToDate(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -146,7 +145,7 @@ func TestStore_EnsureLocalConfig_LocalConfigUpToDate(t *testing.T) {
 	os.WriteFile(cfgPath, []byte(`{"basic": {"api_type": "github"}}`), 0o644)
 
 	// Should not download since local is newer
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -173,7 +172,7 @@ func TestStore_EnsureLocalConfig_LocalConfigOlder(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -184,7 +183,7 @@ func TestStore_EnsureLocalConfig_LocalConfigOlder(t *testing.T) {
 	cfgPath := filepath.Join(tmpDir, "project-a.json")
 	os.WriteFile(cfgPath, []byte(`{"basic": {"api_type": "github"}}`), 0o644)
 
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -211,7 +210,7 @@ func TestStore_EnsureLocalConfig_EmptyDate(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -223,7 +222,7 @@ func TestStore_EnsureLocalConfig_EmptyDate(t *testing.T) {
 	os.WriteFile(cfgPath, []byte(`{"basic": {"api_type": "github"}}`), 0o644)
 
 	// Should not download since date is empty
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -250,14 +249,14 @@ func TestStore_DownloadConfig(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
 	tmpDir := t.TempDir()
 	store.SetLocalConfigDir(tmpDir)
 
-	err := store.EnsureLocalConfig(context.Background(), "project-a")
+	err := store.EnsureLocalConfig(t.Context(), "project-a")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}
@@ -288,14 +287,14 @@ func TestStore_DownloadConfig_DownloadsToCorrectPath(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
 	tmpDir := t.TempDir()
 	store.SetLocalConfigDir(tmpDir)
 
-	err := store.EnsureLocalConfig(context.Background(), "my-project")
+	err := store.EnsureLocalConfig(t.Context(), "my-project")
 	if err != nil {
 		t.Fatalf("EnsureLocalConfig() error = %v", err)
 	}

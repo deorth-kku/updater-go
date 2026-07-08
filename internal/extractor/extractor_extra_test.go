@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,7 +24,7 @@ func TestDecompressor_Nop(t *testing.T) {
 		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -48,7 +47,7 @@ func TestDecompressor_NonArchiveFile(t *testing.T) {
 		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
 	}
 	d := New(cfg)
-	if err := d.Extract(srcPath, destDir); err != nil {
+	if err := d.Extract(t.Context(), srcPath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -76,7 +75,7 @@ func TestDecompressor_SingleDir_WithPrefix(t *testing.T) {
 		SingleDir:       config.BoolOrString{BoolVal: true, IsBool: false, StringVal: "app"},
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -102,7 +101,7 @@ func TestDecompressor_SingleDir_NoSingleDir(t *testing.T) {
 		SingleDir:       config.BoolOrString{BoolVal: true, IsBool: true},
 	}
 	d := New(cfg)
-	if err := d.Extract(archivePath, destDir); err != nil {
+	if err := d.Extract(t.Context(), archivePath, destDir); err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
@@ -127,7 +126,7 @@ func TestIdentify_Zip(t *testing.T) {
 	}
 	defer f.Close()
 
-	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	format, _, err := archives.Identify(t.Context(), filepath.Base(archivePath), f)
 	if err != nil {
 		t.Fatalf("Identify() error = %v", err)
 	}
@@ -146,7 +145,7 @@ func TestIdentify_TarGz(t *testing.T) {
 	}
 	defer f.Close()
 
-	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	format, _, err := archives.Identify(t.Context(), filepath.Base(archivePath), f)
 	if err != nil {
 		t.Fatalf("Identify() error = %v", err)
 	}
@@ -165,7 +164,7 @@ func TestIdentify_TarXz(t *testing.T) {
 	}
 	defer f.Close()
 
-	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	format, _, err := archives.Identify(t.Context(), filepath.Base(archivePath), f)
 	if err != nil {
 		t.Fatalf("Identify() error = %v", err)
 	}
@@ -184,7 +183,7 @@ func TestIdentify_SevenZ(t *testing.T) {
 	}
 	defer f.Close()
 
-	format, _, err := archives.Identify(context.Background(), filepath.Base(archivePath), f)
+	format, _, err := archives.Identify(t.Context(), filepath.Base(archivePath), f)
 	if err != nil {
 		t.Fatalf("Identify() error = %v", err)
 	}
@@ -204,7 +203,7 @@ func TestIdentify_NonArchive(t *testing.T) {
 	}
 	defer f.Close()
 
-	_, _, err = archives.Identify(context.Background(), filepath.Base(nonSfxPath), f)
+	_, _, err = archives.Identify(t.Context(), filepath.Base(nonSfxPath), f)
 	if err != archives.NoMatch {
 		t.Errorf("Identify() for non-SFX .exe should return NoMatch, got %v", err)
 	}

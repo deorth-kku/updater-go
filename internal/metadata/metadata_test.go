@@ -42,7 +42,7 @@ func TestStore_Load(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestStore_LoadMultipleRepos(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo1", "https://example.com/repo2"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestStore_LoadFailure(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	err := store.Load(context.Background())
+	err := store.Load(t.Context())
 	if err == nil {
 		t.Error("Load() should return error for 500 response")
 	}
@@ -139,7 +139,7 @@ func TestStore_Entries(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestStore_EntriesReturnsCopy(t *testing.T) {
 	})
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
-	if err := store.Load(context.Background()); err != nil {
+	if err := store.Load(t.Context()); err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
