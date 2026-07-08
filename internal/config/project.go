@@ -179,26 +179,27 @@ func (s StringOrSlice) First() string {
 
 // BoolOrString allows a JSON field to be either a boolean or a string.
 // Used for fields like "skip" and "single_dir" which can be true/false or a directory name.
+// Zero value (IsString=false) represents a boolean; IsString=true means a string value.
 type BoolOrString struct {
-	IsBool    bool // true if the value was a boolean
+	IsString  bool // true if the value was a string
 	BoolVal   bool
 	StringVal string
 }
 
 // UnmarshalJSON implements custom unmarshaling for BoolOrString.
 func (b *BoolOrString) UnmarshalJSON(data []byte) error {
-	// Try bool first
-	var bl bool
-	if err := json.Unmarshal(data, &bl); err == nil {
-		b.BoolVal = bl
-		b.IsBool = true
-		return nil
-	}
-	// Try string
+	// Try string first
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
 		b.StringVal = str
-		b.IsBool = false
+		b.IsString = true
+		return nil
+	}
+	// Try bool
+	var bl bool
+	if err := json.Unmarshal(data, &bl); err == nil {
+		b.BoolVal = bl
+		b.IsString = false
 		return nil
 	}
 	return fmt.Errorf("bool_or_string must be bool or string, got %s", string(data))
@@ -206,15 +207,15 @@ func (b *BoolOrString) UnmarshalJSON(data []byte) error {
 
 // Bool returns the value as a bool. If it's a string, returns true.
 func (b BoolOrString) Bool() bool {
-	if b.IsBool {
-		return b.BoolVal
+	if b.IsString {
+		return true
 	}
-	return true
+	return b.BoolVal
 }
 
 // String returns the value as a string. If it's a bool, returns empty string.
 func (b BoolOrString) String() string {
-	if !b.IsBool {
+	if b.IsString {
 		return b.StringVal
 	}
 	return ""
@@ -223,8 +224,8 @@ func (b BoolOrString) String() string {
 // MarshalJSON implements custom marshaling for BoolOrString.
 // Outputs just the boolean or string value, not the struct.
 func (b BoolOrString) MarshalJSON() ([]byte, error) {
-	if b.IsBool {
-		return json.Marshal(b.BoolVal)
+	if b.IsString {
+		return json.Marshal(b.StringVal)
 	}
-	return json.Marshal(b.StringVal)
+	return json.Marshal(b.BoolVal)
 }

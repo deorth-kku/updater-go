@@ -161,12 +161,7 @@ func TestExtractFile_Sfx7z(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
-		CleanInstall:    false,
-	}
+	cfg := config.DecompressConfig{}
 	d, err := New(t.Context(), sfxPath, cfg)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

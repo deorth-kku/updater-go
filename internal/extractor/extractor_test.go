@@ -17,9 +17,9 @@ import (
 // defaultDecompressConfig returns the default DecompressConfig used by all tests.
 func defaultDecompressConfig(exclude ...string) config.DecompressConfig {
 	return config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		Skip:            config.BoolOrString{BoolVal: false},
 		ExcludeFileType: exclude,
-		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		SingleDir:       config.BoolOrString{BoolVal: false},
 		CleanInstall:    false,
 	}
 }
@@ -490,12 +490,7 @@ func TestTarXzExtractor_EvilPath(t *testing.T) {
 	})
 
 	destDir := t.TempDir()
-	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
-		CleanInstall:    false,
-	}
+	cfg := defaultDecompressConfig()
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -570,10 +565,7 @@ func TestDecompressor_SingleDir_True(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: true, IsBool: true},
-		CleanInstall:    false,
+		SingleDir: config.BoolOrString{BoolVal: true},
 	}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
@@ -601,10 +593,7 @@ func TestDecompressor_SingleDir_String(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{StringVal: "prefix/", IsBool: false},
-		CleanInstall:    false,
+		SingleDir: config.BoolOrString{IsString: true, StringVal: "prefix/"},
 	}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
@@ -632,7 +621,7 @@ func TestDecompressor_Skip_True(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	cfg.Skip = config.BoolOrString{BoolVal: true, IsBool: true}
+	cfg.Skip = config.BoolOrString{BoolVal: true}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -660,10 +649,8 @@ func TestDecompressor_CleanInstall(t *testing.T) {
 	os.WriteFile(filepath.Join(destDir, "old.txt"), []byte("old content"), 0o644)
 
 	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
-		CleanInstall:    true,
+		SingleDir:    config.BoolOrString{BoolVal: true},
+		CleanInstall: true,
 	}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
@@ -715,9 +702,7 @@ func TestDecompressor_Nop(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: true, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		Skip: config.BoolOrString{BoolVal: true},
 	}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {
@@ -770,9 +755,7 @@ func TestDecompressor_SingleDir_WithPrefix(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
-		ExcludeFileType: []string{},
-		SingleDir:       config.BoolOrString{BoolVal: true, IsBool: false, StringVal: "app"},
+		SingleDir: config.BoolOrString{IsString: true, StringVal: "app"},
 	}
 	d, err := New(t.Context(), archivePath, cfg)
 	if err != nil {

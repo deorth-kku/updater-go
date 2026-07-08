@@ -169,7 +169,7 @@ func TestProjectConfig_ApplyDefaults_WithDefaults(t *testing.T) {
 	}
 }
 func TestBoolOrString_MarshalJSON_Bool(t *testing.T) {
-	b := BoolOrString{IsBool: true, BoolVal: true}
+	b := BoolOrString{BoolVal: true}
 	data, err := json.Marshal(b)
 	if err != nil {
 		t.Fatalf("MarshalJSON() error = %v", err)
@@ -178,7 +178,7 @@ func TestBoolOrString_MarshalJSON_Bool(t *testing.T) {
 		t.Errorf("MarshalJSON() = %s, want true", string(data))
 	}
 
-	b = BoolOrString{IsBool: true, BoolVal: false}
+	b = BoolOrString{BoolVal: false}
 	data, err = json.Marshal(b)
 	if err != nil {
 		t.Fatalf("MarshalJSON() error = %v", err)
@@ -189,7 +189,7 @@ func TestBoolOrString_MarshalJSON_Bool(t *testing.T) {
 }
 
 func TestBoolOrString_MarshalJSON_String(t *testing.T) {
-	b := BoolOrString{IsBool: false, StringVal: "prefix"}
+	b := BoolOrString{IsString: true, StringVal: "prefix"}
 	data, err := json.Marshal(b)
 	if err != nil {
 		t.Fatalf("MarshalJSON() error = %v", err)
@@ -204,16 +204,16 @@ func TestBoolOrString_UnmarshalJSON_Bool(t *testing.T) {
 	if err := json.Unmarshal([]byte("true"), &b); err != nil {
 		t.Fatalf("UnmarshalJSON() error = %v", err)
 	}
-	if !b.IsBool || b.BoolVal != true {
-		t.Errorf("UnmarshalJSON(true) = {IsBool:%v, BoolVal:%v}, want {true, true}", b.IsBool, b.BoolVal)
+	if b.IsString || b.BoolVal != true {
+		t.Errorf("UnmarshalJSON(true) = {IsString:%v, BoolVal:%v}, want {false, true}", b.IsString, b.BoolVal)
 	}
 
 	var b2 BoolOrString
 	if err := json.Unmarshal([]byte("false"), &b2); err != nil {
 		t.Fatalf("UnmarshalJSON() error = %v", err)
 	}
-	if !b2.IsBool || b2.BoolVal != false {
-		t.Errorf("UnmarshalJSON(false) = {IsBool:%v, BoolVal:%v}, want {true, false}", b2.IsBool, b2.BoolVal)
+	if b2.IsString || b2.BoolVal != false {
+		t.Errorf("UnmarshalJSON(false) = {IsString:%v, BoolVal:%v}, want {false, false}", b2.IsString, b2.BoolVal)
 	}
 }
 
@@ -222,8 +222,8 @@ func TestBoolOrString_UnmarshalJSON_String(t *testing.T) {
 	if err := json.Unmarshal([]byte(`"single_dir"`), &b); err != nil {
 		t.Fatalf("UnmarshalJSON() error = %v", err)
 	}
-	if b.IsBool || b.StringVal != "single_dir" {
-		t.Errorf("UnmarshalJSON(\"single_dir\") = {IsBool:%v, StringVal:%q}, want {false, \"single_dir\"}", b.IsBool, b.StringVal)
+	if !b.IsString || b.StringVal != "single_dir" {
+		t.Errorf("UnmarshalJSON(\"single_dir\") = {IsString:%v, StringVal:%q}, want {true, \"single_dir\"}", b.IsString, b.StringVal)
 	}
 }
 
@@ -233,9 +233,9 @@ func TestBoolOrString_Bool(t *testing.T) {
 		b    BoolOrString
 		want bool
 	}{
-		{"bool true", BoolOrString{IsBool: true, BoolVal: true}, true},
-		{"bool false", BoolOrString{IsBool: true, BoolVal: false}, false},
-		{"string", BoolOrString{IsBool: false, StringVal: "anything"}, true},
+		{"bool true", BoolOrString{BoolVal: true}, true},
+		{"bool false", BoolOrString{BoolVal: false}, false},
+		{"string", BoolOrString{IsString: true, StringVal: "anything"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -252,9 +252,9 @@ func TestBoolOrString_String(t *testing.T) {
 		b    BoolOrString
 		want string
 	}{
-		{"bool true", BoolOrString{IsBool: true, BoolVal: true}, ""},
-		{"bool false", BoolOrString{IsBool: true, BoolVal: false}, ""},
-		{"string", BoolOrString{IsBool: false, StringVal: "prefix"}, "prefix"},
+		{"bool true", BoolOrString{BoolVal: true}, ""},
+		{"bool false", BoolOrString{BoolVal: false}, ""},
+		{"string", BoolOrString{IsString: true, StringVal: "prefix"}, "prefix"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

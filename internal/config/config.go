@@ -43,11 +43,11 @@ func hardcodedDefaults() ProjectConfig {
 			Regex:         "",
 		},
 		Decompress: DecompressConfig{
-			Skip:                      BoolOrString{BoolVal: false, IsBool: true},
+			Skip:                      BoolOrString{BoolVal: false},
 			IncludeFileType:           []string{},
 			ExcludeFileType:           []string{},
 			ExcludeFileTypeWhenUpdate: []string{},
-			SingleDir:                 BoolOrString{BoolVal: true, IsBool: true},
+			SingleDir:                 BoolOrString{BoolVal: true},
 			KeepDownloadFile:          true,
 			UseBuiltinZipfile:         false,
 			UseSystemPackageManager:   false,
