@@ -1,8 +1,6 @@
 package downloader
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestErrNotLocal(t *testing.T) {
 	if ErrNotLocal == nil {
@@ -14,7 +12,7 @@ func TestErrNotLocal(t *testing.T) {
 }
 
 func TestGenerateSecret_Length(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		secret := generateSecret()
 		if len(secret) != 16 {
 			t.Errorf("generateSecret() len = %d, want 16 (iteration %d)", len(secret), i)

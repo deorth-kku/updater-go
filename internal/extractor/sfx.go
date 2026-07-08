@@ -24,7 +24,7 @@ func findSfxOffset(f *os.File) (int64, bool) {
 	}
 	data = data[:n]
 
-	for i := 0; i+len(sevenZipMagic) <= len(data); i++ {
+	for i := range len(data) - len(sevenZipMagic) {
 		if bytes.Equal(sevenZipMagic, data[i:i+len(sevenZipMagic)]) {
 			return int64(i), true
 		}
