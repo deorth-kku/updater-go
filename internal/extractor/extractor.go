@@ -100,19 +100,6 @@ func extractFile(ctx context.Context, srcPath, destDir string, skip skipper) err
 	}
 	defer f.Close()
 
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", srcPath, err)
-	}
-
-	// Self-extracting 7z archive: the 7z payload is embedded after an
-	// executable stub, so format detection by header fails. Scan for the 7z
-	// signature and extract the embedded payload directly.
-	if offset, ok := findSfxOffset(f); ok {
-		sr := io.NewSectionReader(f, offset, info.Size()-offset)
-		return archives.SevenZip{}.Extract(ctx, sr, makeHandler(destDir, skip))
-	}
-
 	// Reset to start for format identification.
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("seek %s: %w", srcPath, err)
