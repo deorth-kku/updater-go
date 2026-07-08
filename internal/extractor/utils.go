@@ -22,6 +22,10 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
+	return copyF(in, dst)
+}
+
+func copyF(f *os.File, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
@@ -32,7 +36,7 @@ func copyFile(src, dst string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, in)
+	_, err = io.Copy(out, f)
 	return err
 }
 

@@ -102,20 +102,25 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 
 	// Step 5: Extract
 	if !u.projectCfg.Decompress.Skip.Bool() {
+		ex, err := extractor.New(ctx, localPath, u.projectCfg.Decompress)
+		if err != nil {
+			result.Error = fmt.Errorf("detect format %w", err)
+			return result
+		}
 		ext := strings.ToLower(filepath.Ext(localPath))
-		if isArchive(ext) {
-			extDest := strings.TrimSuffix(localPath, ext)
-			if err := extractor.New(u.projectCfg.Decompress).Extract(ctx, localPath, extDest); err != nil {
-				result.Error = fmt.Errorf("extract: %w", err)
-				return result
-			}
-			result.Extracted = true
+		extDest := strings.TrimSuffix(localPath, ext)
+		if err := ex.Extract(ctx, extDest); err != nil {
+			ex.Close()
+			result.Error = fmt.Errorf("extract: %w", err)
+			return result
+		}
+		ex.Close()
+		result.Extracted = true
 
-			// Delete archive unless keep_download_file is true
-			if !u.projectCfg.Decompress.KeepDownloadFile {
-				if err := os.Remove(localPath); err != nil {
-					u.logger.Warn("failed to remove download file", "project", result.ProjectName, "error", err)
-				}
+		// Delete archive unless keep_download_file is true
+		if !u.projectCfg.Decompress.KeepDownloadFile {
+			if err := os.Remove(localPath); err != nil {
+				u.logger.Warn("failed to remove download file", "project", result.ProjectName, "error", err)
 			}
 		}
 	}
@@ -297,17 +302,6 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 	// Extract filename from URL
 	parts := strings.Split(dlURL, "/")
 	return parts[len(parts)-1]
-}
-
-func isArchive(ext string) bool {
-	switch ext {
-	case ".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz", ".tbz2",
-		".tar.zst", ".tzst", ".tar.lz4", ".tar.lz", ".tar.br", ".tar.z", ".tar.lzma",
-		".7z", ".rar", ".gz", ".bz2", ".zst", ".lz4", ".sz", ".s2", ".br", ".z", ".lz",
-		".lzma", ".xz", ".zlib", ".exe":
-		return true
-	}
-	return false
 }
 
 // Ensure platform is used

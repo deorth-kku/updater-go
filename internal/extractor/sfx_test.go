@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/mholt/archives"
 )
 
@@ -160,8 +161,19 @@ func TestExtractFile_Sfx7z(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	if err := extractFile(t.Context(), sfxPath, destDir, nil); err != nil {
-		t.Fatalf("extractFile() error = %v", err)
+	cfg := config.DecompressConfig{
+		Skip:            config.BoolOrString{BoolVal: false, IsBool: true},
+		ExcludeFileType: []string{},
+		SingleDir:       config.BoolOrString{BoolVal: false, IsBool: true},
+		CleanInstall:    false,
+	}
+	d, err := New(t.Context(), sfxPath, cfg)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
 	}
 
 	verifyExtracted(t, destDir, contents)

@@ -19,16 +19,43 @@ type skipper interface {
 // Decompressor handles decompression by dispatching to the appropriate
 // archive format, which is auto-detected via github.com/mholt/archives.
 type Decompressor struct {
-	cfg config.DecompressConfig
+	cfg     config.DecompressConfig
+	f       *os.File
+	extract archives.Extractor
 }
 
 // New creates a new Decompressor with the given decompress config.
-func New(cfg config.DecompressConfig) *Decompressor {
-	return &Decompressor{cfg: cfg}
+func New(ctx context.Context, srcPath string, cfg config.DecompressConfig) (*Decompressor, error) {
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", srcPath, err)
+	}
+
+	// Reset to start for format identification.
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("seek %s: %w", srcPath, err)
+	}
+
+	format, _, err := archives.Identify(ctx, filepath.Base(srcPath), f)
+	switch err {
+	case nil:
+	case archives.NoMatch:
+		return &Decompressor{cfg: cfg, f: f}, nil
+	default:
+		f.Close()
+		return nil, fmt.Errorf("identify %s: %w", srcPath, err)
+	}
+	arc, _ := format.(archives.Extractor)
+	return &Decompressor{cfg: cfg, f: f, extract: arc}, nil
+}
+
+func (d *Decompressor) Close() error {
+	return d.f.Close()
 }
 
 // Extract decompresses the given file to the destination directory.
-func (d *Decompressor) Extract(ctx context.Context, srcPath, destDir string) error {
+func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	if d.cfg.Skip.Bool() {
 		return nil
 	}
@@ -45,16 +72,16 @@ func (d *Decompressor) Extract(ctx context.Context, srcPath, destDir string) err
 
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
-		return extractWithSingleDir(ctx, srcPath, d.cfg.SingleDir, skip, destDir)
+		return d.extractWithSingleDir(ctx, d.cfg.SingleDir, skip, destDir)
 	}
 
 	// Dispatch to the appropriate format via auto-detection.
-	return extractFile(ctx, srcPath, destDir, skip)
+	return d.extractFile(ctx, destDir, skip)
 }
 
 // extractWithSingleDir extracts to a temp dir, then if there's exactly one
 // subdirectory at the top level, moves its contents into destDir.
-func extractWithSingleDir(ctx context.Context, srcPath string, prefix config.BoolOrString, skip skipper, destDir string) error {
+func (d *Decompressor) extractWithSingleDir(ctx context.Context, prefix config.BoolOrString, skip skipper, destDir string) error {
 	tmpDir, err := os.MkdirTemp("", "updater-extract-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
@@ -66,7 +93,7 @@ func extractWithSingleDir(ctx context.Context, srcPath string, prefix config.Boo
 		s = mergeSkipper{s, prefixSkipper(prefix.StringVal)}
 	}
 
-	if err := extractFile(ctx, srcPath, tmpDir, s); err != nil {
+	if err := d.extractFile(ctx, tmpDir, s); err != nil {
 		return err
 	}
 
@@ -92,34 +119,11 @@ func extractWithSingleDir(ctx context.Context, srcPath string, prefix config.Boo
 
 // extractFile extracts (or copies) srcPath into destDir, auto-detecting the
 // archive format. Non-archive files are copied verbatim into destDir.
-func extractFile(ctx context.Context, srcPath, destDir string, skip skipper) error {
-
-	f, err := os.Open(srcPath)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", srcPath, err)
+func (d *Decompressor) extractFile(ctx context.Context, destDir string, skip skipper) error {
+	if d.extract == nil {
+		return copyFile(d.f.Name(), filepath.Join(destDir, filepath.Base(d.f.Name())))
 	}
-	defer f.Close()
-
-	// Reset to start for format identification.
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("seek %s: %w", srcPath, err)
-	}
-
-	format, _, err := archives.Identify(ctx, filepath.Base(srcPath), f)
-	if err != nil {
-		if err == archives.NoMatch {
-			// Non-archive file (.exe, .apk, .dmg, ...) — copy it as-is.
-			return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
-		}
-		return fmt.Errorf("identify %s: %w", srcPath, err)
-	}
-
-	ex, ok := format.(archives.Extractor)
-	if !ok {
-		return copyFile(srcPath, filepath.Join(destDir, filepath.Base(srcPath)))
-	}
-
-	return ex.Extract(ctx, f, makeHandler(destDir, skip))
+	return d.extract.Extract(ctx, d.f, makeHandler(destDir, skip))
 }
 
 // makeHandler returns an archives.FileHandler that writes each archive entry
