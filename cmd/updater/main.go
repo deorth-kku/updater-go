@@ -135,11 +135,15 @@ func run(cmd *cobra.Command, args []string) error {
 
 		// Ensure local configs are up-to-date for all projects
 		for _, proj := range cfg.Projects {
+			if len(args) != 0 && !slices.Contains(args, proj.Name) {
+				continue
+			}
 			if !proj.Enabled() {
 				continue
 			}
 			if err := metaStore.EnsureLocalConfig(ctx, proj.Name); err != nil {
 				logger.Warn("failed to ensure local config", "name", proj.Name, "error", err)
+				return err
 			}
 		}
 	}
