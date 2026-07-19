@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -40,11 +41,28 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
 	}
 
+	slog.Default().Debug("github query",
+		"step", "api.github.latest",
+		"account", g.accountName,
+		"project", g.projectName,
+		"no_pull", g.noPull,
+		"reason", "no_pull selects /releases/latest endpoint, otherwise /releases list",
+		"result", url,
+	)
+
 	resp, err := g.downloader.Get(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("github releases: %w", err)
 	}
 	if resp.StatusCode != 200 {
+		slog.Default().Error("github query failed",
+			"step", "api.github.latest",
+			"account", g.accountName,
+			"project", g.projectName,
+			"status", resp.StatusCode,
+			"reason", "github API returned non-200 status",
+			"result", "error",
+		)
 		return nil, fmt.Errorf("github releases returned status %d: %s", resp.StatusCode, string(resp.Body))
 	}
 
@@ -54,6 +72,14 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		if err := json.Unmarshal(resp.Body, &rel); err != nil {
 			return nil, fmt.Errorf("parse github release: %w", err)
 		}
+		slog.Default().Info("latest version detected",
+			"step", "api.github.latest",
+			"account", g.accountName,
+			"project", g.projectName,
+			"version", rel.TagName,
+			"reason", "parsed single /releases/latest response",
+			"result", rel.TagName,
+		)
 		return g.buildRelease(rel), nil
 	}
 
@@ -62,9 +88,24 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("parse github releases: %w", err)
 	}
 	if len(releases) == 0 {
+		slog.Default().Error("no github releases",
+			"step", "api.github.latest",
+			"account", g.accountName,
+			"project", g.projectName,
+			"reason", "releases list is empty",
+			"result", "error",
+		)
 		return nil, fmt.Errorf("no releases found for %s/%s", g.accountName, g.projectName)
 	}
 
+	slog.Default().Info("latest version detected",
+		"step", "api.github.latest",
+		"account", g.accountName,
+		"project", g.projectName,
+		"version", releases[0].TagName,
+		"reason", "took first entry from releases list",
+		"result", releases[0].TagName,
+	)
 	return g.buildRelease(releases[0]), nil
 }
 

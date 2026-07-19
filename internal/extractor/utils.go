@@ -3,6 +3,7 @@ package extractor
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,13 @@ type excludeSkipper []string
 func (excludeFileType excludeSkipper) shouldSkipFile(name string) bool {
 	for _, ext := range excludeFileType {
 		if strings.HasSuffix(strings.ToLower(name), strings.ToLower(ext)) {
+			slog.Default().Debug("file skipped during extract",
+				"step", "extractor.skip",
+				"name", name,
+				"exclude_ext", ext,
+				"reason", "matched exclude file type",
+				"result", "skip",
+			)
 			return true
 		}
 	}

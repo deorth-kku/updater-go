@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -85,11 +86,24 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 			version = fmt.Sprintf("%v", val)
 		}
 	}
+	slog.Default().Info("latest version detected",
+		"step", "api.apijson.latest",
+		"url", a.apiURL,
+		"version", version,
+		"reason", "version read from configured json path",
+		"result", version,
+	)
 
 	dlURL, err := a.buildDownloadURL()
 	if err != nil {
 		return nil, err
 	}
+	slog.Default().Debug("apijson url extracted",
+		"step", "api.apijson.latest",
+		"url", dlURL,
+		"reason", "download url built from configured path segments",
+		"result", dlURL,
+	)
 
 	fileName := a.dlCfg.FilenameOverride
 	if fileName == "" {

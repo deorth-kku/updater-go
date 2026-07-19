@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/url"
@@ -46,6 +47,12 @@ var defaultHeaders = map[string]string{
 func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	// If a direct URL is configured, use it without scraping
 	if s.dlCfg.URL != "" {
+		slog.Default().Info("simplespider using direct url",
+			"step", "api.simplespider.latest",
+			"page", s.pageURL,
+			"reason", "download.url configured, skip scraping",
+			"result", s.dlCfg.URL,
+		)
 		return s.buildFromDirectURL(ctx, s.dlCfg.URL)
 	}
 
@@ -60,12 +67,26 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
+	slog.Default().Debug("simplespider url extracted",
+		"step", "api.simplespider.latest",
+		"page", s.pageURL,
+		"url", dlURL,
+		"reason", "regexes matched a download url on the page",
+		"result", dlURL,
+	)
 
 	// Extract version
 	version, err := s.extractVersion(dlURL, page)
 	if err != nil {
 		return nil, err
 	}
+	slog.Default().Info("latest version detected",
+		"step", "api.simplespider.latest",
+		"page", s.pageURL,
+		"version", version,
+		"reason", "version extracted from url or page",
+		"result", version,
+	)
 
 	fileName := extractFilename(dlURL)
 	if s.dlCfg.FilenameOverride != "" {

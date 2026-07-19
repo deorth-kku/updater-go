@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -30,7 +31,14 @@ type sfxSeekReaderAt interface {
 	io.Seeker
 }
 
-func (sevenZipSFX) Extension() string { return ".exe" }
+func (sevenZipSFX) Extension() string {
+	slog.Default().Debug("sfx extension queried",
+		"step", "extractor.sfx",
+		"reason", "7z self-extracting archive reports its extension",
+		"result", ".exe",
+	)
+	return ".exe"
+}
 
 func (sevenZipSFX) MediaType() string { return "application/x-msdownload" }
 

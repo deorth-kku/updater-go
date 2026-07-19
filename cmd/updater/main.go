@@ -62,12 +62,28 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
+	logger.Info("logging initialized",
+		"level", logLevel.String(),
+		"verbose", flagVerbose,
+		"reason", "log level selected from --verbose flag",
+		"result", logLevel.String(),
+	)
 
 	// Resolve config path
 	configPath := resolveConfigPath()
+	logger.Info("config path resolved",
+		"path", configPath,
+		"reason", "resolved from --config flag, cwd, or home dir",
+		"result", configPath,
+	)
 	var cfg *config.Config
 	_, err := os.Stat(configPath)
 	if err != nil {
+		logger.Warn("config not found, using defaults",
+			"path", configPath,
+			"reason", "no config file at resolved path",
+			"result", "default config",
+		)
 		cfg = config.GetDefault()
 	} else {
 		// Load main config
@@ -75,6 +91,12 @@ func run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
+		logger.Info("config loaded",
+			"path", configPath,
+			"projects", len(cfg.Projects),
+			"reason", "config file exists and parsed",
+			"result", "ok",
+		)
 	}
 
 	// Handle --path flag: add project and update
@@ -101,10 +123,11 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Create aria2 downloader with fallback to local aria2c subprocess
 	addr := cfg.Aria2.RPCAddr()
+	dlLogger := logger.With("component", "downloader")
 
 	var aria2DL downloader.Downloader
 	var localAria2 *downloader.LocalAria2
-	aria2DL, localAria2, err = downloader.NewAria2DownloaderOrLocal(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir, cfg.Binaries.Aria2c, logger, cfg.Requests.GetTimeout())
+	aria2DL, localAria2, err = downloader.NewAria2DownloaderOrLocal(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir, cfg.Binaries.Aria2c, dlLogger, cfg.Requests.GetTimeout())
 	if err != nil {
 		logger.Warn("aria2 connection failed", "error", err)
 		return err
@@ -152,6 +175,17 @@ func run(cmd *cobra.Command, args []string) error {
 	jobs := flagJobs
 	if jobs <= 0 {
 		jobs = runtime.GOMAXPROCS(0)
+		logger.Info("worker count resolved",
+			"jobs", jobs,
+			"reason", "--jobs not set, defaulting to GOMAXPROCS",
+			"result", jobs,
+		)
+	} else {
+		logger.Info("worker count resolved",
+			"jobs", jobs,
+			"reason", "--jobs flag set",
+			"result", jobs,
+		)
 	}
 
 	// Run updates with bounded parallelism
@@ -163,6 +197,11 @@ func run(cmd *cobra.Command, args []string) error {
 
 	for _, proj := range cfg.Projects {
 		if !proj.Enabled() {
+			logger.Debug("project skipped",
+				"name", proj.Name,
+				"reason", "project disabled in config",
+				"result", "skip",
+			)
 			continue
 		}
 
@@ -170,6 +209,11 @@ func run(cmd *cobra.Command, args []string) error {
 		if len(args) > 0 {
 			found := slices.Contains(args, proj.Name)
 			if !found {
+				logger.Debug("project skipped",
+					"name", proj.Name,
+					"reason", "not in positional args filter",
+					"result", "skip",
+				)
 				continue
 			}
 		}
@@ -185,7 +229,8 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 
 		g.Go(func() error {
-			u := updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, logger)
+			upLogger := logger.With("component", "updater", "project", proj.Name)
+			u := updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, upLogger)
 			result := u.Update(gctx)
 			mu.Lock()
 			defer mu.Unlock()

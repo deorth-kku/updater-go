@@ -142,13 +142,28 @@ func generateSecret() string {
 func NewAria2DownloaderOrLocal(ctx context.Context, addr, secret, remoteDir, localDir, binPath string, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, *LocalAria2, error) {
 	rpc, err := NewAria2Downloader(ctx, addr, secret, remoteDir, localDir, logger, timeout)
 	if err != nil {
+		logger.Warn("aria2 RPC connection failed, trying local subprocess",
+			"addr", addr,
+			"reason", "could not connect to remote aria2 RPC",
+			"result", "fallback to local",
+		)
 		goto try_local
 	}
 	_, err = rpc.client.GetVersion(ctx)
 	if err != nil {
 		rpc.Close()
+		logger.Warn("aria2 RPC version check failed, trying local subprocess",
+			"addr", addr,
+			"reason", "connected but GetVersion failed",
+			"result", "fallback to local",
+		)
 		goto try_local
 	}
+	logger.Info("using aria2 RPC downloader",
+		"addr", addr,
+		"reason", "remote aria2 RPC reachable and responsive",
+		"result", "rpc",
+	)
 	return rpc, nil, err
 try_local:
 	local, newsecret, localerr := StartLocalAria2(ctx, addr, secret, binPath, logger)
@@ -159,8 +174,20 @@ try_local:
 			local.Stop()
 			return nil, nil, err
 		}
+		logger.Info("using local aria2 subprocess",
+			"addr", addr,
+			"bin", binPath,
+			"reason", "remote unreachable; started local aria2c and reconnected",
+			"result", "local",
+		)
 		return rpc, local, err
 	case ErrNotLocal:
+		logger.Error("aria2 not available locally",
+			"addr", addr,
+			"bin", binPath,
+			"reason", "local aria2c could not be started and this is not a local address",
+			"result", "error",
+		)
 		return nil, nil, err
 
 	default:

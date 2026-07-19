@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -41,6 +42,12 @@ type rssFeed struct {
 
 func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 	rssURL := fmt.Sprintf("https://sourceforge.net/projects/%s/rss?path=/", s.projectName)
+	slog.Default().Debug("sourceforge query",
+		"step", "api.sourceforge.latest",
+		"project", s.projectName,
+		"reason", "fetch project RSS feed",
+		"result", rssURL,
+	)
 	resp, err := s.downloader.Get(ctx, rssURL)
 	if err != nil {
 		return nil, fmt.Errorf("sourceforge rss: %w", err)
@@ -60,6 +67,13 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 			// Try alternative format
 			_, err = time.Parse("Mon, 02 Jan 2006 15:04:05 UT", item.PubDate)
 			if err != nil {
+				slog.Default().Debug("sourceforge item skipped",
+					"step", "api.sourceforge.latest",
+					"project", s.projectName,
+					"title", item.Title,
+					"reason", "pub_date did not match known formats",
+					"result", "skip",
+				)
 				continue
 			}
 		}
@@ -68,6 +82,14 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		fileName := strings.TrimPrefix(item.Title, "/")
 		dlURL := downloadPrefix + "/" + fileName
 
+		slog.Default().Info("latest version detected",
+			"step", "api.sourceforge.latest",
+			"project", s.projectName,
+			"version", item.PubDate,
+			"file", fileName,
+			"reason", "first valid RSS item used as latest",
+			"result", item.PubDate,
+		)
 		return &Release{
 			URL:     dlURL,
 			Version: item.PubDate,
@@ -77,5 +99,11 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		}, nil
 	}
 
+	slog.Default().Error("no sourceforge file found",
+		"step", "api.sourceforge.latest",
+		"project", s.projectName,
+		"reason", "RSS feed contained no valid items",
+		"result", "error",
+	)
 	return nil, fmt.Errorf("no files found in sourceforge rss for %s", s.projectName)
 }

@@ -4,6 +4,7 @@ package process
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -39,21 +40,45 @@ func NewWithConfig(imageName, stopCmd, startCmd string, service bool, restartWai
 // After stopping, waits for RestartWait seconds before returning.
 func (c *Controller) Stop(ctx context.Context) error {
 	if c.imageName == "" && c.stopCmd == "" && !c.service {
+		slog.Default().Debug("process stop skipped",
+			"step", "process.stop",
+			"image", c.imageName,
+			"reason", "no image_name, stop_cmd, or service configured",
+			"result", "skip",
+		)
 		return nil
 	}
 
 	// Custom stop command takes priority
 	if c.stopCmd != "" {
+		slog.Default().Info("process stop strategy",
+			"step", "process.stop",
+			"image", c.imageName,
+			"reason", "custom stop_cmd configured, takes priority",
+			"result", "run stop_cmd",
+		)
 		err := c.runCustomCmd(ctx, c.stopCmd)
 		if err != nil {
 			return err
 		}
 	} else if c.service {
+		slog.Default().Info("process stop strategy",
+			"step", "process.stop",
+			"image", c.imageName,
+			"reason", "service mode enabled, no custom stop_cmd",
+			"result", "stop service",
+		)
 		err := c.stopService(ctx)
 		if err != nil {
 			return err
 		}
 	} else {
+		slog.Default().Info("process stop strategy",
+			"step", "process.stop",
+			"image", c.imageName,
+			"reason", "no stop_cmd and no service, terminate by image name",
+			"result", "kill image",
+		)
 		switch runtime.GOOS {
 		case "windows":
 			err := c.stopWindows(ctx)
@@ -120,24 +145,55 @@ func (c *Controller) runCustomCmd(ctx context.Context, cmdStr string) error {
 // Start launches the process by image name, start_cmd, or service.
 func (c *Controller) Start(ctx context.Context, path string) error {
 	if c.imageName == "" && c.startCmd == "" && !c.service {
+		slog.Default().Debug("process start skipped",
+			"step", "process.start",
+			"image", c.imageName,
+			"reason", "no image_name, start_cmd, or service configured",
+			"result", "skip",
+		)
 		return nil
 	}
 
 	// Custom start command takes priority
 	if c.startCmd != "" {
+		slog.Default().Info("process start strategy",
+			"step", "process.start",
+			"image", c.imageName,
+			"reason", "custom start_cmd configured, takes priority",
+			"result", "run start_cmd",
+		)
 		return c.runCustomCmd(ctx, c.startCmd)
 	}
 
 	// Service mode
 	if c.service {
+		slog.Default().Info("process start strategy",
+			"step", "process.start",
+			"image", c.imageName,
+			"reason", "service mode enabled, no custom start_cmd",
+			"result", "start service",
+		)
 		return c.startService(ctx)
 	}
 
 	// Launch by path (image_name is used for identification, path is the executable)
 	if path == "" {
+		slog.Default().Error("process start failed",
+			"step", "process.start",
+			"image", c.imageName,
+			"reason", "no start_cmd/service and no executable path provided",
+			"result", "error",
+		)
 		return fmt.Errorf("process start: no path provided for %s", c.imageName)
 	}
 
+	slog.Default().Info("process start strategy",
+		"step", "process.start",
+		"image", c.imageName,
+		"path", path,
+		"reason", "no start_cmd and no service, launch executable by path",
+		"result", "start binary",
+	)
 	switch runtime.GOOS {
 	case "windows":
 		cmd := exec.CommandContext(ctx, path)

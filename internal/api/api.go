@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/deorth-kku/updater-go/internal/config"
 )
@@ -35,18 +36,54 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 	case "github":
 		api := NewGitHubAPI(cfg, dl)
 		api.SetNoPull(buildCfg.NoPull)
+		slog.Default().Info("api backend selected",
+			"project", cfg.ProjectName,
+			"api_type", "github",
+			"reason", "config api_type is github",
+			"result", "github",
+		)
 		return api, nil
 	case "appveyor":
 		api := NewAppveyorAPI(cfg, dl)
 		api.SetBranch(buildCfg.Branch)
+		slog.Default().Info("api backend selected",
+			"project", cfg.ProjectName,
+			"api_type", "appveyor",
+			"reason", "config api_type is appveyor",
+			"result", "appveyor",
+		)
 		return api, nil
 	case "sourceforge":
+		slog.Default().Info("api backend selected",
+			"project", cfg.ProjectName,
+			"api_type", "sourceforge",
+			"reason", "config api_type is sourceforge",
+			"result", "sourceforge",
+		)
 		return NewSourceforgeAPI(cfg, dl), nil
 	case "simplespider":
+		slog.Default().Info("api backend selected",
+			"project", cfg.ProjectName,
+			"api_type", "simplespider",
+			"reason", "config api_type is simplespider",
+			"result", "simplespider",
+		)
 		return NewSimpleSpiderAPI(cfg, dlCfg, verCfg, dl), nil
 	case "apijson":
+		slog.Default().Info("api backend selected",
+			"project", cfg.ProjectName,
+			"api_type", "apijson",
+			"reason", "config api_type is apijson",
+			"result", "apijson",
+		)
 		return NewApiJsonAPI(cfg, dlCfg, verCfg, dl), nil
 	default:
+		slog.Default().Error("unknown api_type",
+			"project", cfg.ProjectName,
+			"api_type", cfg.APIType,
+			"reason", "config api_type did not match any known backend",
+			"result", "error",
+		)
 		return nil, fmt.Errorf("unknown api_type: %q", cfg.APIType)
 	}
 }

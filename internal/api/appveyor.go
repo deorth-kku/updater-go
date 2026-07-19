@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -43,6 +44,15 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	historyURL := fmt.Sprintf("%s/projects/%s/%s/history?recordsNumber=100%s",
 		baseURL, a.accountName, a.projectName, branchParam)
 
+	slog.Default().Debug("appveyor query",
+		"step", "api.appveyor.latest",
+		"account", a.accountName,
+		"project", a.projectName,
+		"branch", a.branch,
+		"reason", "fetch build history (optionally filtered by branch)",
+		"result", historyURL,
+	)
+
 	resp, err := a.downloader.Get(ctx, historyURL)
 	if err != nil {
 		return nil, fmt.Errorf("appveyor history: %w", err)
@@ -56,6 +66,14 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	for _, build := range history.Builds {
 		// Skip PR-triggered builds when no_pull is enabled
 		if build.PullRequestID != "" {
+			slog.Default().Debug("appveyor build skipped",
+				"step", "api.appveyor.latest",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", build.Version,
+				"reason", "build is PR-triggered, excluded",
+				"result", "skip",
+			)
 			continue
 		}
 
@@ -74,6 +92,14 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 
 		jobID := findJobID(buildDetail.Build.Jobs)
 		if jobID == "" {
+			slog.Default().Debug("appveyor build skipped",
+				"step", "api.appveyor.latest",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", version,
+				"reason", "no suitable job id found in build",
+				"result", "skip",
+			)
 			continue
 		}
 
@@ -93,12 +119,38 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 			if updated != "" {
 				dt, err := time.Parse("2006-01-02T15:04:05", updated)
 				if err == nil && time.Since(dt) > 30*24*time.Hour {
+					slog.Default().Debug("appveyor build skipped",
+						"step", "api.appveyor.latest",
+						"account", a.accountName,
+						"project", a.projectName,
+						"version", version,
+						"reason", "no artifacts and build older than 30 days",
+						"result", "skip",
+					)
 					continue
 				}
 			}
+			slog.Default().Debug("appveyor build skipped",
+				"step", "api.appveyor.latest",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", version,
+				"reason", "no artifacts and no/old timestamp",
+				"result", "skip",
+			)
 			continue
 		}
 
+		slog.Default().Info("latest version detected",
+			"step", "api.appveyor.latest",
+			"account", a.accountName,
+			"project", a.projectName,
+			"version", version,
+			"job_id", jobID,
+			"artifacts", len(artifacts),
+			"reason", "found build with artifacts",
+			"result", version,
+		)
 		return &Release{
 			Version:   version,
 			Artifacts: artifacts,
@@ -107,6 +159,13 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}, nil
 	}
 
+	slog.Default().Error("no appveyor build found",
+		"step", "api.appveyor.latest",
+		"account", a.accountName,
+		"project", a.projectName,
+		"reason", "no build satisfied artifact/age criteria",
+		"result", "error",
+	)
 	return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
 }
 

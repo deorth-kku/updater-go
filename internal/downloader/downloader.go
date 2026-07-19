@@ -32,6 +32,7 @@ type Aria2Downloader struct {
 	localDir  string
 	useWS     bool // true if addr is ws:// or wss://
 	sub       *subscriber
+	logger    *slog.Logger
 }
 
 //go:generate stringer -type=downloadStatus
@@ -145,6 +146,7 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 		localDir:  localDir,
 		useWS:     useWS,
 		sub:       sub,
+		logger:    logger,
 	}, nil
 }
 
@@ -157,6 +159,14 @@ func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir
 		aria2Dir = d.remoteDir + "/" + filepath.Base(saveDir)
 	}
 
+	d.logger.Debug("download prepared",
+		"url", dlURL,
+		"filename", filename,
+		"aria2_dir", aria2Dir,
+		"reason", "resolved aria2 save dir from remote/local dir config",
+		"result", aria2Dir,
+	)
+
 	opts := map[string]string{
 		"dir": aria2Dir,
 		"out": filename,
@@ -164,14 +174,43 @@ func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir
 
 	gid, err := d.client.AddURI(ctx, []string{dlURL}, opts, nil)
 	if err != nil {
+		d.logger.Error("download add failed",
+			"url", dlURL,
+			"filename", filename,
+			"reason", "aria2 AddURI returned error",
+			"result", "error",
+		)
 		return "", "", fmt.Errorf("aria2 addURI: %w", err)
 	}
+	d.logger.Info("download started",
+		"url", dlURL,
+		"filename", filename,
+		"gid", gid,
+		"reason", "aria2 accepted download, waiting for completion",
+		"result", "in progress",
+	)
 	stat, err := d.waitForCompletion(ctx, gid)
 	if err != nil {
+		d.logger.Error("download failed",
+			"url", dlURL,
+			"filename", filename,
+			"gid", gid,
+			"reason", "waitForCompletion returned error",
+			"result", "error",
+		)
 		return "", "", err
 	}
 
-	return d.resolveLocalPath(stat), gid, nil
+	localPath := d.resolveLocalPath(stat)
+	d.logger.Info("download completed",
+		"url", dlURL,
+		"filename", filename,
+		"gid", gid,
+		"path", localPath,
+		"reason", "aria2 reported completion",
+		"result", localPath,
+	)
+	return localPath, gid, nil
 }
 
 // resolveLocalPath converts the aria2 save path to a local filesystem path.

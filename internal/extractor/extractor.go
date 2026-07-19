@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -40,14 +41,27 @@ func New(ctx context.Context, srcPath string, cfg config.DecompressConfig) (*Dec
 	format, _, err := archives.Identify(ctx, filepath.Base(srcPath), f)
 	switch err {
 	case nil:
+		arc, _ := format.(archives.Extractor)
+		slog.Default().Info("archive format detected",
+			"step", "extractor.new",
+			"path", srcPath,
+			"format", fmt.Sprintf("%T", format),
+			"reason", "archives.Identify matched a known archive format",
+			"result", fmt.Sprintf("%T", format),
+		)
+		return &Decompressor{cfg: cfg, f: f, extract: arc}, nil
 	case archives.NoMatch:
+		slog.Default().Info("archive format not detected",
+			"step", "extractor.new",
+			"path", srcPath,
+			"reason", "archives.Identify returned NoMatch, treat as plain file copy",
+			"result", "no extractor",
+		)
 		return &Decompressor{cfg: cfg, f: f}, nil
 	default:
 		f.Close()
 		return nil, fmt.Errorf("identify %s: %w", srcPath, err)
 	}
-	arc, _ := format.(archives.Extractor)
-	return &Decompressor{cfg: cfg, f: f, extract: arc}, nil
 }
 
 func (d *Decompressor) Close() error {
@@ -57,11 +71,23 @@ func (d *Decompressor) Close() error {
 // Extract decompresses the given file to the destination directory.
 func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	if d.cfg.Skip.Bool() {
+		slog.Default().Info("extraction skipped",
+			"step", "extractor.extract",
+			"dest", destDir,
+			"reason", "decompress.skip enabled",
+			"result", "skip",
+		)
 		return nil
 	}
 
 	// clean_install: remove existing files in dest before extraction
 	if d.cfg.CleanInstall {
+		slog.Default().Info("clean install",
+			"step", "extractor.extract",
+			"dest", destDir,
+			"reason", "clean_install enabled, remove existing files first",
+			"result", "begin",
+		)
 		if err := cleanInstall(destDir); err != nil {
 			return fmt.Errorf("clean_install: %w", err)
 		}
@@ -72,9 +98,22 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
+		slog.Default().Info("extraction mode",
+			"step", "extractor.extract",
+			"dest", destDir,
+			"single_dir", d.cfg.SingleDir.String(),
+			"reason", "single_dir enabled, extract to temp then flatten if one subdir",
+			"result", "single_dir",
+		)
 		return d.extractWithSingleDir(ctx, d.cfg.SingleDir, skip, destDir)
 	}
 
+	slog.Default().Info("extraction mode",
+		"step", "extractor.extract",
+		"dest", destDir,
+		"reason", "no single_dir, extract directly to dest",
+		"result", "direct",
+	)
 	// Dispatch to the appropriate format via auto-detection.
 	return d.extractFile(ctx, destDir, skip)
 }
