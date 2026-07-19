@@ -107,9 +107,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			result.Error = fmt.Errorf("detect format %w", err)
 			return result
 		}
-		ext := strings.ToLower(filepath.Ext(localPath))
-		extDest := strings.TrimSuffix(localPath, ext)
-		if err := ex.Extract(ctx, extDest); err != nil {
+		if err := ex.Extract(ctx, u.entry.SavePath); err != nil {
 			ex.Close()
 			result.Error = fmt.Errorf("extract: %w", err)
 			return result
@@ -161,7 +159,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			}
 		} else {
 			// Find the executable in the save path
-			exePath := filepath.Join(u.entry.SavePath, result.ProjectName, imageName)
+			exePath := filepath.Join(u.entry.SavePath, imageName)
 			if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(exePath), ".exe") {
 				exePath += ".exe"
 			}
