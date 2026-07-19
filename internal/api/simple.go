@@ -50,7 +50,6 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	// If a direct URL is configured, use it without scraping
 	if s.dlCfg.URL != "" {
 		s.logger.Info("simplespider using direct url",
-			"step", "api.simplespider.latest",
 			"page", s.pageURL,
 			"reason", "download.url configured, skip scraping",
 			"result", s.dlCfg.URL,
@@ -70,7 +69,6 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, err
 	}
 	s.logger.Debug("simplespider url extracted",
-		"step", "api.simplespider.latest",
 		"page", s.pageURL,
 		"url", dlURL,
 		"reason", "regexes matched a download url on the page",
@@ -83,7 +81,6 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, err
 	}
 	s.logger.Info("latest version detected",
-		"step", "api.simplespider.latest",
 		"page", s.pageURL,
 		"version", version,
 		"reason", "version extracted from url or page",

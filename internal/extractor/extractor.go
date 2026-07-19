@@ -44,7 +44,6 @@ func New(ctx context.Context, srcPath string, cfg config.DecompressConfig, logge
 	case nil:
 		arc, _ := format.(archives.Extractor)
 		logger.Info("archive format detected",
-			"step", "extractor.new",
 			"path", srcPath,
 			"format", fmt.Sprintf("%T", format),
 			"reason", "archives.Identify matched a known archive format",
@@ -53,7 +52,6 @@ func New(ctx context.Context, srcPath string, cfg config.DecompressConfig, logge
 		return &Decompressor{cfg: cfg, f: f, extract: arc, logger: logger}, nil
 	case archives.NoMatch:
 		logger.Info("archive format not detected",
-			"step", "extractor.new",
 			"path", srcPath,
 			"reason", "archives.Identify returned NoMatch, treat as plain file copy",
 			"result", "no extractor",
@@ -82,7 +80,6 @@ func (d *Decompressor) log() *slog.Logger {
 func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	if d.cfg.Skip.Bool() {
 		d.log().Info("extraction skipped",
-			"step", "extractor.extract",
 			"dest", destDir,
 			"reason", "decompress.skip enabled",
 			"result", "skip",
@@ -93,7 +90,6 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	// clean_install: remove existing files in dest before extraction
 	if d.cfg.CleanInstall {
 		d.log().Info("clean install",
-			"step", "extractor.extract",
 			"dest", destDir,
 			"reason", "clean_install enabled, remove existing files first",
 			"result", "begin",
@@ -109,7 +105,6 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
 		d.log().Info("extraction mode",
-			"step", "extractor.extract",
 			"dest", destDir,
 			"single_dir", d.cfg.SingleDir.String(),
 			"reason", "single_dir enabled, extract to temp then flatten if one subdir",
@@ -119,7 +114,6 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	}
 
 	d.log().Info("extraction mode",
-		"step", "extractor.extract",
 		"dest", destDir,
 		"reason", "no single_dir, extract directly to dest",
 		"result", "direct",

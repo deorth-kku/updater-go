@@ -89,7 +89,6 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 	}
 	a.logger.Info("latest version detected",
-		"step", "api.apijson.latest",
 		"url", a.apiURL,
 		"version", version,
 		"reason", "version read from configured json path",
@@ -101,7 +100,6 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, err
 	}
 	a.logger.Debug("apijson url extracted",
-		"step", "api.apijson.latest",
 		"url", dlURL,
 		"reason", "download url built from configured path segments",
 		"result", dlURL,

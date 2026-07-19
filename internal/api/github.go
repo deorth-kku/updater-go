@@ -44,7 +44,6 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	g.logger.Debug("github query",
-		"step", "api.github.latest",
 		"account", g.accountName,
 		"project", g.projectName,
 		"no_pull", g.noPull,
@@ -58,7 +57,6 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 	if resp.StatusCode != 200 {
 		g.logger.Error("github query failed",
-			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
 			"status", resp.StatusCode,
@@ -75,7 +73,6 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 			return nil, fmt.Errorf("parse github release: %w", err)
 		}
 		g.logger.Info("latest version detected",
-			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
 			"version", rel.TagName,
@@ -91,7 +88,6 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 	if len(releases) == 0 {
 		g.logger.Error("no github releases",
-			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
 			"reason", "releases list is empty",
@@ -101,7 +97,6 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	g.logger.Info("latest version detected",
-		"step", "api.github.latest",
 		"account", g.accountName,
 		"project", g.projectName,
 		"version", releases[0].TagName,

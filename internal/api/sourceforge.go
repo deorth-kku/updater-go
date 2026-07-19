@@ -45,7 +45,6 @@ type rssFeed struct {
 func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 	rssURL := fmt.Sprintf("https://sourceforge.net/projects/%s/rss?path=/", s.projectName)
 	s.logger.Debug("sourceforge query",
-		"step", "api.sourceforge.latest",
 		"project", s.projectName,
 		"reason", "fetch project RSS feed",
 		"result", rssURL,
@@ -70,7 +69,6 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 			_, err = time.Parse("Mon, 02 Jan 2006 15:04:05 UT", item.PubDate)
 			if err != nil {
 				s.logger.Debug("sourceforge item skipped",
-					"step", "api.sourceforge.latest",
 					"project", s.projectName,
 					"title", item.Title,
 					"reason", "pub_date did not match known formats",
@@ -85,7 +83,6 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		dlURL := downloadPrefix + "/" + fileName
 
 		s.logger.Info("latest version detected",
-			"step", "api.sourceforge.latest",
 			"project", s.projectName,
 			"version", item.PubDate,
 			"file", fileName,
@@ -102,7 +99,6 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	s.logger.Error("no sourceforge file found",
-		"step", "api.sourceforge.latest",
 		"project", s.projectName,
 		"reason", "RSS feed contained no valid items",
 		"result", "error",

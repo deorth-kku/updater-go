@@ -46,7 +46,6 @@ func (fs *FileSelector) Match(name string) bool {
 		ext := "." + strings.TrimPrefix(fs.Filetype, ".")
 		if !strings.HasSuffix(nameLower, ext) {
 			fs.log().Debug("file rejected",
-				"step", "extractor.match",
 				"name", name,
 				"reason", "filetype does not match required extension",
 				"result", "reject",
@@ -59,7 +58,6 @@ func (fs *FileSelector) Match(name string) bool {
 	for _, ek := range fs.ExcludeKeywords {
 		if strings.Contains(nameLower, strings.ToLower(ek)) {
 			fs.log().Debug("file rejected",
-				"step", "extractor.match",
 				"name", name,
 				"exclude_keyword", ek,
 				"reason", "matched exclude keyword",
@@ -73,7 +71,6 @@ func (fs *FileSelector) Match(name string) bool {
 	for _, ext := range fs.ExcludeFileTypeWhenUpdate {
 		if strings.HasSuffix(nameLower, strings.ToLower(ext)) {
 			fs.log().Debug("file rejected",
-				"step", "extractor.match",
 				"name", name,
 				"exclude_ext", ext,
 				"reason", "matched exclude file type when updating",
@@ -87,7 +84,6 @@ func (fs *FileSelector) Match(name string) bool {
 	for _, k := range fs.Keywords {
 		if !strings.Contains(nameLower, strings.ToLower(k)) {
 			fs.log().Debug("file rejected",
-				"step", "extractor.match",
 				"name", name,
 				"keyword", k,
 				"reason", "missing required keyword",
@@ -109,7 +105,6 @@ func (fs *FileSelector) SelectFiles(names []string) []string {
 		}
 	}
 	fs.log().Debug("files selected",
-		"step", "extractor.select",
 		"total", len(names),
 		"matched", len(result),
 		"reason", "file selector applied to candidate list",

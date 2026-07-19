@@ -47,7 +47,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		baseURL, a.accountName, a.projectName, branchParam)
 
 	a.logger.Debug("appveyor query",
-		"step", "api.appveyor.latest",
 		"account", a.accountName,
 		"project", a.projectName,
 		"branch", a.branch,
@@ -69,7 +68,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		// Skip PR-triggered builds when no_pull is enabled
 		if build.PullRequestID != "" {
 			a.logger.Debug("appveyor build skipped",
-				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
 				"version", build.Version,
@@ -95,7 +93,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		jobID := findJobID(buildDetail.Build.Jobs)
 		if jobID == "" {
 			a.logger.Debug("appveyor build skipped",
-				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
 				"version", version,
@@ -122,7 +119,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 				dt, err := time.Parse("2006-01-02T15:04:05", updated)
 				if err == nil && time.Since(dt) > 30*24*time.Hour {
 					a.logger.Debug("appveyor build skipped",
-						"step", "api.appveyor.latest",
 						"account", a.accountName,
 						"project", a.projectName,
 						"version", version,
@@ -133,7 +129,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 				}
 			}
 			a.logger.Debug("appveyor build skipped",
-				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
 				"version", version,
@@ -144,7 +139,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 
 		a.logger.Info("latest version detected",
-			"step", "api.appveyor.latest",
 			"account", a.accountName,
 			"project", a.projectName,
 			"version", version,
@@ -162,7 +156,6 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	a.logger.Error("no appveyor build found",
-		"step", "api.appveyor.latest",
 		"account", a.accountName,
 		"project", a.projectName,
 		"reason", "no build satisfied artifact/age criteria",

@@ -52,7 +52,6 @@ func (c *Controller) log() *slog.Logger {
 func (c *Controller) Stop(ctx context.Context) error {
 	if c.imageName == "" && c.stopCmd == "" && !c.service {
 		c.log().Debug("process stop skipped",
-			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "no image_name, stop_cmd, or service configured",
 			"result", "skip",
@@ -63,7 +62,6 @@ func (c *Controller) Stop(ctx context.Context) error {
 	// Custom stop command takes priority
 	if c.stopCmd != "" {
 		c.log().Info("process stop strategy",
-			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "custom stop_cmd configured, takes priority",
 			"result", "run stop_cmd",
@@ -74,7 +72,6 @@ func (c *Controller) Stop(ctx context.Context) error {
 		}
 	} else if c.service {
 		c.log().Info("process stop strategy",
-			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "service mode enabled, no custom stop_cmd",
 			"result", "stop service",
@@ -85,7 +82,6 @@ func (c *Controller) Stop(ctx context.Context) error {
 		}
 	} else {
 		c.log().Info("process stop strategy",
-			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "no stop_cmd and no service, terminate by image name",
 			"result", "kill image",
@@ -157,7 +153,6 @@ func (c *Controller) runCustomCmd(ctx context.Context, cmdStr string) error {
 func (c *Controller) Start(ctx context.Context, path string) error {
 	if c.imageName == "" && c.startCmd == "" && !c.service {
 		c.log().Debug("process start skipped",
-			"step", "process.start",
 			"image", c.imageName,
 			"reason", "no image_name, start_cmd, or service configured",
 			"result", "skip",
@@ -168,7 +163,6 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 	// Custom start command takes priority
 	if c.startCmd != "" {
 		c.log().Info("process start strategy",
-			"step", "process.start",
 			"image", c.imageName,
 			"reason", "custom start_cmd configured, takes priority",
 			"result", "run start_cmd",
@@ -179,7 +173,6 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 	// Service mode
 	if c.service {
 		c.log().Info("process start strategy",
-			"step", "process.start",
 			"image", c.imageName,
 			"reason", "service mode enabled, no custom start_cmd",
 			"result", "start service",
@@ -190,7 +183,6 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 	// Launch by path (image_name is used for identification, path is the executable)
 	if path == "" {
 		c.log().Error("process start failed",
-			"step", "process.start",
 			"image", c.imageName,
 			"reason", "no start_cmd/service and no executable path provided",
 			"result", "error",
@@ -199,7 +191,6 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 	}
 
 	c.log().Info("process start strategy",
-		"step", "process.start",
 		"image", c.imageName,
 		"path", path,
 		"reason", "no start_cmd and no service, launch executable by path",
