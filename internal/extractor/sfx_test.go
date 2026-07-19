@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -162,7 +163,7 @@ func TestExtractFile_Sfx7z(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{}
-	d, err := New(t.Context(), sfxPath, cfg)
+	d, err := New(t.Context(), sfxPath, cfg, slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

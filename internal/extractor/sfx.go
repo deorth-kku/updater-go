@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"strings"
 
@@ -32,11 +31,6 @@ type sfxSeekReaderAt interface {
 }
 
 func (sevenZipSFX) Extension() string {
-	slog.Default().Debug("sfx extension queried",
-		"step", "extractor.sfx",
-		"reason", "7z self-extracting archive reports its extension",
-		"result", ".exe",
-	)
 	return ".exe"
 }
 

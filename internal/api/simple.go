@@ -23,10 +23,11 @@ type SimpleSpiderAPI struct {
 	verCfg     config.VersionConfig
 	headers    map[string]string
 	downloader Downloader
+	logger     *slog.Logger
 }
 
 // NewSimpleSpiderAPI creates a new SimpleSpider API adapter.
-func NewSimpleSpiderAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader) *SimpleSpiderAPI {
+func NewSimpleSpiderAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader, logger *slog.Logger) *SimpleSpiderAPI {
 	headers := make(map[string]string)
 	maps.Copy(headers, defaultHeaders)
 	maps.Copy(headers, cfg.Headers)
@@ -37,6 +38,7 @@ func NewSimpleSpiderAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, ver
 		verCfg:     verCfg,
 		headers:    headers,
 		downloader: dl,
+		logger:     logger,
 	}
 }
 
@@ -47,7 +49,7 @@ var defaultHeaders = map[string]string{
 func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	// If a direct URL is configured, use it without scraping
 	if s.dlCfg.URL != "" {
-		slog.Default().Info("simplespider using direct url",
+		s.logger.Info("simplespider using direct url",
 			"step", "api.simplespider.latest",
 			"page", s.pageURL,
 			"reason", "download.url configured, skip scraping",
@@ -67,7 +69,7 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Default().Debug("simplespider url extracted",
+	s.logger.Debug("simplespider url extracted",
 		"step", "api.simplespider.latest",
 		"page", s.pageURL,
 		"url", dlURL,
@@ -80,7 +82,7 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Default().Info("latest version detected",
+	s.logger.Info("latest version detected",
 		"step", "api.simplespider.latest",
 		"page", s.pageURL,
 		"version", version,

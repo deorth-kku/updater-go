@@ -17,15 +17,17 @@ type AppveyorAPI struct {
 	projectName string
 	branch      string
 	downloader  Downloader
+	logger      *slog.Logger
 }
 
 // NewAppveyorAPI creates a new AppVeyor API adapter.
-func NewAppveyorAPI(cfg config.BasicConfig, dl Downloader) *AppveyorAPI {
+func NewAppveyorAPI(cfg config.BasicConfig, dl Downloader, logger *slog.Logger) *AppveyorAPI {
 	return &AppveyorAPI{
 		accountName: cfg.AccountName,
 		projectName: cfg.ProjectName,
 		branch:      "",
 		downloader:  dl,
+		logger:      logger,
 	}
 }
 
@@ -44,7 +46,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	historyURL := fmt.Sprintf("%s/projects/%s/%s/history?recordsNumber=100%s",
 		baseURL, a.accountName, a.projectName, branchParam)
 
-	slog.Default().Debug("appveyor query",
+	a.logger.Debug("appveyor query",
 		"step", "api.appveyor.latest",
 		"account", a.accountName,
 		"project", a.projectName,
@@ -66,7 +68,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	for _, build := range history.Builds {
 		// Skip PR-triggered builds when no_pull is enabled
 		if build.PullRequestID != "" {
-			slog.Default().Debug("appveyor build skipped",
+			a.logger.Debug("appveyor build skipped",
 				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
@@ -92,7 +94,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 
 		jobID := findJobID(buildDetail.Build.Jobs)
 		if jobID == "" {
-			slog.Default().Debug("appveyor build skipped",
+			a.logger.Debug("appveyor build skipped",
 				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
@@ -119,7 +121,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 			if updated != "" {
 				dt, err := time.Parse("2006-01-02T15:04:05", updated)
 				if err == nil && time.Since(dt) > 30*24*time.Hour {
-					slog.Default().Debug("appveyor build skipped",
+					a.logger.Debug("appveyor build skipped",
 						"step", "api.appveyor.latest",
 						"account", a.accountName,
 						"project", a.projectName,
@@ -130,7 +132,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 					continue
 				}
 			}
-			slog.Default().Debug("appveyor build skipped",
+			a.logger.Debug("appveyor build skipped",
 				"step", "api.appveyor.latest",
 				"account", a.accountName,
 				"project", a.projectName,
@@ -141,7 +143,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 			continue
 		}
 
-		slog.Default().Info("latest version detected",
+		a.logger.Info("latest version detected",
 			"step", "api.appveyor.latest",
 			"account", a.accountName,
 			"project", a.projectName,
@@ -159,7 +161,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}, nil
 	}
 
-	slog.Default().Error("no appveyor build found",
+	a.logger.Error("no appveyor build found",
 		"step", "api.appveyor.latest",
 		"account", a.accountName,
 		"project", a.projectName,

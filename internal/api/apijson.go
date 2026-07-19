@@ -17,15 +17,17 @@ type ApiJsonAPI struct {
 	verCfg     config.VersionConfig
 	downloader Downloader
 	jsonData   any // Can be map or array
+	logger     *slog.Logger
 }
 
 // NewApiJsonAPI creates a new ApiJson API adapter.
-func NewApiJsonAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader) *ApiJsonAPI {
+func NewApiJsonAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, dl Downloader, logger *slog.Logger) *ApiJsonAPI {
 	return &ApiJsonAPI{
 		apiURL:     cfg.APIURL,
 		dlCfg:      dlCfg,
 		verCfg:     verCfg,
 		downloader: dl,
+		logger:     logger,
 	}
 }
 
@@ -86,7 +88,7 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 			version = fmt.Sprintf("%v", val)
 		}
 	}
-	slog.Default().Info("latest version detected",
+	a.logger.Info("latest version detected",
 		"step", "api.apijson.latest",
 		"url", a.apiURL,
 		"version", version,
@@ -98,7 +100,7 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Default().Debug("apijson url extracted",
+	a.logger.Debug("apijson url extracted",
 		"step", "api.apijson.latest",
 		"url", dlURL,
 		"reason", "download url built from configured path segments",

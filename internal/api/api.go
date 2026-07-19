@@ -31,12 +31,13 @@ type API interface {
 }
 
 // NewAPI creates the appropriate API adapter based on the project config.
-func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, buildCfg config.BuildConfig, dl Downloader) (API, error) {
+func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.VersionConfig, buildCfg config.BuildConfig, dl Downloader, logger *slog.Logger) (API, error) {
+	logger = logger.With("api_type", cfg.APIType)
 	switch cfg.APIType {
 	case "github":
-		api := NewGitHubAPI(cfg, dl)
+		api := NewGitHubAPI(cfg, dl, logger)
 		api.SetNoPull(buildCfg.NoPull)
-		slog.Default().Info("api backend selected",
+		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "github",
 			"reason", "config api_type is github",
@@ -44,9 +45,9 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 		)
 		return api, nil
 	case "appveyor":
-		api := NewAppveyorAPI(cfg, dl)
+		api := NewAppveyorAPI(cfg, dl, logger)
 		api.SetBranch(buildCfg.Branch)
-		slog.Default().Info("api backend selected",
+		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "appveyor",
 			"reason", "config api_type is appveyor",
@@ -54,31 +55,31 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 		)
 		return api, nil
 	case "sourceforge":
-		slog.Default().Info("api backend selected",
+		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "sourceforge",
 			"reason", "config api_type is sourceforge",
 			"result", "sourceforge",
 		)
-		return NewSourceforgeAPI(cfg, dl), nil
+		return NewSourceforgeAPI(cfg, dl, logger), nil
 	case "simplespider":
-		slog.Default().Info("api backend selected",
+		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "simplespider",
 			"reason", "config api_type is simplespider",
 			"result", "simplespider",
 		)
-		return NewSimpleSpiderAPI(cfg, dlCfg, verCfg, dl), nil
+		return NewSimpleSpiderAPI(cfg, dlCfg, verCfg, dl, logger), nil
 	case "apijson":
-		slog.Default().Info("api backend selected",
+		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "apijson",
 			"reason", "config api_type is apijson",
 			"result", "apijson",
 		)
-		return NewApiJsonAPI(cfg, dlCfg, verCfg, dl), nil
+		return NewApiJsonAPI(cfg, dlCfg, verCfg, dl, logger), nil
 	default:
-		slog.Default().Error("unknown api_type",
+		logger.Error("unknown api_type",
 			"project", cfg.ProjectName,
 			"api_type", cfg.APIType,
 			"reason", "config api_type did not match any known backend",

@@ -16,15 +16,17 @@ type GitHubAPI struct {
 	projectName string
 	noPull      bool
 	downloader  Downloader
+	logger      *slog.Logger
 }
 
 // NewGitHubAPI creates a new GitHub API adapter.
-func NewGitHubAPI(cfg config.BasicConfig, dl Downloader) *GitHubAPI {
+func NewGitHubAPI(cfg config.BasicConfig, dl Downloader, logger *slog.Logger) *GitHubAPI {
 	return &GitHubAPI{
 		accountName: cfg.AccountName,
 		projectName: cfg.ProjectName,
 		noPull:      false,
 		downloader:  dl,
+		logger:      logger,
 	}
 }
 
@@ -41,7 +43,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
 	}
 
-	slog.Default().Debug("github query",
+	g.logger.Debug("github query",
 		"step", "api.github.latest",
 		"account", g.accountName,
 		"project", g.projectName,
@@ -55,7 +57,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("github releases: %w", err)
 	}
 	if resp.StatusCode != 200 {
-		slog.Default().Error("github query failed",
+		g.logger.Error("github query failed",
 			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
@@ -72,7 +74,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		if err := json.Unmarshal(resp.Body, &rel); err != nil {
 			return nil, fmt.Errorf("parse github release: %w", err)
 		}
-		slog.Default().Info("latest version detected",
+		g.logger.Info("latest version detected",
 			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
@@ -88,7 +90,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("parse github releases: %w", err)
 	}
 	if len(releases) == 0 {
-		slog.Default().Error("no github releases",
+		g.logger.Error("no github releases",
 			"step", "api.github.latest",
 			"account", g.accountName,
 			"project", g.projectName,
@@ -98,7 +100,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("no releases found for %s/%s", g.accountName, g.projectName)
 	}
 
-	slog.Default().Info("latest version detected",
+	g.logger.Info("latest version detected",
 		"step", "api.github.latest",
 		"account", g.accountName,
 		"project", g.projectName,

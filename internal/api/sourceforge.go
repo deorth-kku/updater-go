@@ -16,13 +16,15 @@ type SourceforgeAPI struct {
 	projectName string
 	downloader  Downloader
 	version     string
+	logger      *slog.Logger
 }
 
 // NewSourceforgeAPI creates a new SourceForge API adapter.
-func NewSourceforgeAPI(cfg config.BasicConfig, dl Downloader) *SourceforgeAPI {
+func NewSourceforgeAPI(cfg config.BasicConfig, dl Downloader, logger *slog.Logger) *SourceforgeAPI {
 	return &SourceforgeAPI{
 		projectName: cfg.ProjectName,
 		downloader:  dl,
+		logger:      logger,
 	}
 }
 
@@ -42,7 +44,7 @@ type rssFeed struct {
 
 func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 	rssURL := fmt.Sprintf("https://sourceforge.net/projects/%s/rss?path=/", s.projectName)
-	slog.Default().Debug("sourceforge query",
+	s.logger.Debug("sourceforge query",
 		"step", "api.sourceforge.latest",
 		"project", s.projectName,
 		"reason", "fetch project RSS feed",
@@ -67,7 +69,7 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 			// Try alternative format
 			_, err = time.Parse("Mon, 02 Jan 2006 15:04:05 UT", item.PubDate)
 			if err != nil {
-				slog.Default().Debug("sourceforge item skipped",
+				s.logger.Debug("sourceforge item skipped",
 					"step", "api.sourceforge.latest",
 					"project", s.projectName,
 					"title", item.Title,
@@ -82,7 +84,7 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		fileName := strings.TrimPrefix(item.Title, "/")
 		dlURL := downloadPrefix + "/" + fileName
 
-		slog.Default().Info("latest version detected",
+		s.logger.Info("latest version detected",
 			"step", "api.sourceforge.latest",
 			"project", s.projectName,
 			"version", item.PubDate,
@@ -99,7 +101,7 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		}, nil
 	}
 
-	slog.Default().Error("no sourceforge file found",
+	s.logger.Error("no sourceforge file found",
 		"step", "api.sourceforge.latest",
 		"project", s.projectName,
 		"reason", "RSS feed contained no valid items",

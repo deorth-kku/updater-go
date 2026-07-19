@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -76,7 +77,7 @@ func TestFileSelector_SelectFiles(t *testing.T) {
 		Keyword:        config.StringOrSlice{"win", "vulkan"},
 		Filetype:       config.StringOrSlice{"zip"},
 		ExcludeKeyword: config.StringOrSlice{"cudart"},
-	}, config.DecompressConfig{})
+	}, config.DecompressConfig{}, slog.Default())
 
 	input := []string{
 		"llama-win-vulkan.zip",
@@ -100,7 +101,7 @@ func TestNewFileSelector_ExpandKeywords(t *testing.T) {
 	fs := NewFileSelector(config.DownloadConfig{
 		Keyword:  config.StringOrSlice{"%arch", "release"},
 		Filetype: config.StringOrSlice{"zip"},
-	}, config.DecompressConfig{})
+	}, config.DecompressConfig{}, slog.Default())
 
 	if len(fs.Keywords) != 2 {
 		t.Fatalf("Keywords len = %d, want 2", len(fs.Keywords))
@@ -119,6 +120,7 @@ func TestFileSelector_ExcludeFileTypeWhenUpdate(t *testing.T) {
 		config.DecompressConfig{
 			ExcludeFileTypeWhenUpdate: []string{".sig", ".sha256"},
 		},
+		slog.Default(),
 	)
 
 	tests := []struct {

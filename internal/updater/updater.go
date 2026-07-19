@@ -73,7 +73,7 @@ func replaceVars(s, path, name, dlFilename, version string) string {
 func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: u.entry.Version}
 	// Step 1: Detect latest version via API
-	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL)
+	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL, u.log())
 	if err != nil {
 		result.Error = fmt.Errorf("create api: %w", err)
 		return result
@@ -157,7 +157,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			"reason", "decompress not skipped",
 			"result", "begin",
 		)
-		ex, err := extractor.New(ctx, localPath, u.projectCfg.Decompress)
+		ex, err := extractor.New(ctx, localPath, u.projectCfg.Decompress, u.log().With("comp", "extractor"))
 		if err != nil {
 			result.Error = fmt.Errorf("detect format %w", err)
 			return result
@@ -216,6 +216,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			u.projectCfg.Process.StartCmd,
 			u.projectCfg.Process.Service,
 			u.projectCfg.Process.RestartWait,
+			u.log(),
 		)
 
 		// Stop process
@@ -347,7 +348,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 
 	// For GitHub releases, filter assets by keywords and index
 	if len(rel.Assets) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress)
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(assetNames(rel.Assets))
 		u.log().Debug("assets matched",
 			"project", u.projectCfg.Basic.ProjectName,
@@ -397,7 +398,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 
 	// For AppVeyor artifacts
 	if len(rel.Artifacts) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress)
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(artifactNames(rel.Artifacts))
 		u.log().Debug("artifacts matched",
 			"project", u.projectCfg.Basic.ProjectName,

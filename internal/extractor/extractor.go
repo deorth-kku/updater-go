@@ -23,10 +23,11 @@ type Decompressor struct {
 	cfg     config.DecompressConfig
 	f       *os.File
 	extract archives.Extractor
+	logger  *slog.Logger
 }
 
 // New creates a new Decompressor with the given decompress config.
-func New(ctx context.Context, srcPath string, cfg config.DecompressConfig) (*Decompressor, error) {
+func New(ctx context.Context, srcPath string, cfg config.DecompressConfig, logger *slog.Logger) (*Decompressor, error) {
 	f, err := os.Open(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", srcPath, err)
@@ -42,22 +43,22 @@ func New(ctx context.Context, srcPath string, cfg config.DecompressConfig) (*Dec
 	switch err {
 	case nil:
 		arc, _ := format.(archives.Extractor)
-		slog.Default().Info("archive format detected",
+		logger.Info("archive format detected",
 			"step", "extractor.new",
 			"path", srcPath,
 			"format", fmt.Sprintf("%T", format),
 			"reason", "archives.Identify matched a known archive format",
 			"result", fmt.Sprintf("%T", format),
 		)
-		return &Decompressor{cfg: cfg, f: f, extract: arc}, nil
+		return &Decompressor{cfg: cfg, f: f, extract: arc, logger: logger}, nil
 	case archives.NoMatch:
-		slog.Default().Info("archive format not detected",
+		logger.Info("archive format not detected",
 			"step", "extractor.new",
 			"path", srcPath,
 			"reason", "archives.Identify returned NoMatch, treat as plain file copy",
 			"result", "no extractor",
 		)
-		return &Decompressor{cfg: cfg, f: f}, nil
+		return &Decompressor{cfg: cfg, f: f, logger: logger}, nil
 	default:
 		f.Close()
 		return nil, fmt.Errorf("identify %s: %w", srcPath, err)
@@ -68,10 +69,19 @@ func (d *Decompressor) Close() error {
 	return d.f.Close()
 }
 
+// log returns the decompressor's logger, falling back to slog.Default when nil
+// (e.g. in unit tests that construct a bare Decompressor struct literal).
+func (d *Decompressor) log() *slog.Logger {
+	if d.logger != nil {
+		return d.logger
+	}
+	return slog.Default()
+}
+
 // Extract decompresses the given file to the destination directory.
 func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 	if d.cfg.Skip.Bool() {
-		slog.Default().Info("extraction skipped",
+		d.log().Info("extraction skipped",
 			"step", "extractor.extract",
 			"dest", destDir,
 			"reason", "decompress.skip enabled",
@@ -82,7 +92,7 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 
 	// clean_install: remove existing files in dest before extraction
 	if d.cfg.CleanInstall {
-		slog.Default().Info("clean install",
+		d.log().Info("clean install",
 			"step", "extractor.extract",
 			"dest", destDir,
 			"reason", "clean_install enabled, remove existing files first",
@@ -98,7 +108,7 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 
 	// single_dir: extract to temp dir, then move contents up if single subdirectory
 	if d.cfg.SingleDir.Bool() {
-		slog.Default().Info("extraction mode",
+		d.log().Info("extraction mode",
 			"step", "extractor.extract",
 			"dest", destDir,
 			"single_dir", d.cfg.SingleDir.String(),
@@ -108,7 +118,7 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 		return d.extractWithSingleDir(ctx, d.cfg.SingleDir, skip, destDir)
 	}
 
-	slog.Default().Info("extraction mode",
+	d.log().Info("extraction mode",
 		"step", "extractor.extract",
 		"dest", destDir,
 		"reason", "no single_dir, extract directly to dest",
@@ -162,15 +172,20 @@ func (d *Decompressor) extractFile(ctx context.Context, destDir string, skip ski
 	if d.extract == nil {
 		return copyFile(d.f.Name(), filepath.Join(destDir, filepath.Base(d.f.Name())))
 	}
-	return d.extract.Extract(ctx, d.f, makeHandler(destDir, skip))
+	return d.extract.Extract(ctx, d.f, makeHandler(destDir, skip, d.log()))
 }
 
 // makeHandler returns an archives.FileHandler that writes each archive entry
 // into destDir, honoring the skip filter and guarding against path traversal.
-func makeHandler(destDir string, skip skipper) archives.FileHandler {
+func makeHandler(destDir string, skip skipper, logger *slog.Logger) archives.FileHandler {
 	return func(ctx context.Context, fi archives.FileInfo) error {
 		name := fi.NameInArchive
 		if skip != nil && skip.shouldSkipFile(name) {
+			logger.Debug("file skipped during extract",
+				"name", name,
+				"reason", "matched exclude file type",
+				"result", "skip",
+			)
 			return nil
 		}
 

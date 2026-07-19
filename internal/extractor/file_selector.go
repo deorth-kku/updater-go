@@ -14,16 +14,27 @@ type FileSelector struct {
 	ExcludeKeywords           []string
 	Filetype                  string
 	ExcludeFileTypeWhenUpdate []string
+	logger                    *slog.Logger
 }
 
 // NewFileSelector creates a FileSelector from the download and decompress configs.
-func NewFileSelector(dlCfg config.DownloadConfig, dcCfg config.DecompressConfig) *FileSelector {
+func NewFileSelector(dlCfg config.DownloadConfig, dcCfg config.DecompressConfig, logger *slog.Logger) *FileSelector {
 	return &FileSelector{
 		Keywords:                  platform.ExpandKeywords(dlCfg.Keyword),
 		ExcludeKeywords:           platform.ExpandKeywords(dlCfg.ExcludeKeyword),
 		Filetype:                  dlCfg.Filetype.First(),
 		ExcludeFileTypeWhenUpdate: dcCfg.ExcludeFileTypeWhenUpdate,
+		logger:                    logger,
 	}
+}
+
+// log returns the selector's logger, falling back to slog.Default when nil
+// (e.g. in unit tests that construct a bare FileSelector struct literal).
+func (fs *FileSelector) log() *slog.Logger {
+	if fs.logger != nil {
+		return fs.logger
+	}
+	return slog.Default()
 }
 
 // Match checks if a filename matches the selector criteria.
@@ -34,7 +45,7 @@ func (fs *FileSelector) Match(name string) bool {
 	if fs.Filetype != "" {
 		ext := "." + strings.TrimPrefix(fs.Filetype, ".")
 		if !strings.HasSuffix(nameLower, ext) {
-			slog.Default().Debug("file rejected",
+			fs.log().Debug("file rejected",
 				"step", "extractor.match",
 				"name", name,
 				"reason", "filetype does not match required extension",
@@ -47,7 +58,7 @@ func (fs *FileSelector) Match(name string) bool {
 	// Check exclude keywords (any match → reject)
 	for _, ek := range fs.ExcludeKeywords {
 		if strings.Contains(nameLower, strings.ToLower(ek)) {
-			slog.Default().Debug("file rejected",
+			fs.log().Debug("file rejected",
 				"step", "extractor.match",
 				"name", name,
 				"exclude_keyword", ek,
@@ -61,7 +72,7 @@ func (fs *FileSelector) Match(name string) bool {
 	// Check exclude file types when updating (any match → reject)
 	for _, ext := range fs.ExcludeFileTypeWhenUpdate {
 		if strings.HasSuffix(nameLower, strings.ToLower(ext)) {
-			slog.Default().Debug("file rejected",
+			fs.log().Debug("file rejected",
 				"step", "extractor.match",
 				"name", name,
 				"exclude_ext", ext,
@@ -75,7 +86,7 @@ func (fs *FileSelector) Match(name string) bool {
 	// Check keywords (all must match)
 	for _, k := range fs.Keywords {
 		if !strings.Contains(nameLower, strings.ToLower(k)) {
-			slog.Default().Debug("file rejected",
+			fs.log().Debug("file rejected",
 				"step", "extractor.match",
 				"name", name,
 				"keyword", k,
@@ -97,7 +108,7 @@ func (fs *FileSelector) SelectFiles(names []string) []string {
 			result = append(result, name)
 		}
 	}
-	slog.Default().Debug("files selected",
+	fs.log().Debug("files selected",
 		"step", "extractor.select",
 		"total", len(names),
 		"matched", len(result),

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestGitHubAPI_Latest(t *testing.T) {
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "git-for-windows",
 		ProjectName: "git",
-	}, mdl)
+	}, mdl, slog.Default())
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
@@ -130,7 +131,7 @@ func TestAppveyorAPI_Latest(t *testing.T) {
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "blueskythlikesclouds",
 		ProjectName: "mikumikulibrary",
-	}, mdl)
+	}, mdl, slog.Default())
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
@@ -154,7 +155,7 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, mdl)
+	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, mdl, slog.Default())
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
@@ -205,6 +206,7 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 		},
 		config.VersionConfig{Regex: "skyline-v(.*?)\\.apk"},
 		mdl,
+		slog.Default(),
 	)
 
 	rel, err := api.Latest(t.Context())
@@ -244,7 +246,7 @@ func TestDictPathGet(t *testing.T) {
 }
 
 func TestNewAPI_UnknownType(t *testing.T) {
-	_, err := NewAPI(config.BasicConfig{APIType: "unknown"}, config.DownloadConfig{}, config.VersionConfig{}, config.BuildConfig{}, nil)
+	_, err := NewAPI(config.BasicConfig{APIType: "unknown"}, config.DownloadConfig{}, config.VersionConfig{}, config.BuildConfig{}, nil, slog.Default())
 	if err == nil {
 		t.Error("NewAPI() expected error for unknown api_type")
 	}
@@ -269,7 +271,7 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "test",
 		ProjectName: "project",
-	}, mdl)
+	}, mdl, slog.Default())
 	api.SetNoPull(true)
 
 	rel, err := api.Latest(t.Context())
@@ -311,7 +313,7 @@ func TestAppveyorAPI_BranchFilter(t *testing.T) {
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "test",
 		ProjectName: "project",
-	}, mdl)
+	}, mdl, slog.Default())
 	api.SetBranch("main")
 
 	rel, err := api.Latest(t.Context())
@@ -336,6 +338,7 @@ func TestSimpleSpiderAPI_HeadersFromConfig(t *testing.T) {
 		config.DownloadConfig{Regexes: []string{`href="([^"]+\.zip)"`}},
 		config.VersionConfig{},
 		nil,
+		slog.Default(),
 	)
 
 	// Verify the API was created with the correct headers
@@ -359,6 +362,7 @@ func TestSimpleSpiderAPI_PostBody(t *testing.T) {
 		},
 		config.VersionConfig{},
 		nil,
+		slog.Default(),
 	)
 
 	// Verify the Data field is stored
@@ -398,6 +402,7 @@ func TestApiJsonAPI_VersionExtraction(t *testing.T) {
 			},
 		},
 		mdl,
+		slog.Default(),
 	)
 
 	rel, err := api.Latest(t.Context())

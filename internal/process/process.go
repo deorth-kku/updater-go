@@ -18,29 +18,40 @@ type Controller struct {
 	startCmd    string
 	service     bool
 	restartWait int
+	logger      *slog.Logger
 }
 
 // New creates a new process Controller.
-func New(imageName string) *Controller {
-	return &Controller{imageName: imageName}
+func New(imageName string, logger *slog.Logger) *Controller {
+	return &Controller{imageName: imageName, logger: logger}
 }
 
 // NewWithConfig creates a Controller with stop/start commands, service mode, and restart wait.
-func NewWithConfig(imageName, stopCmd, startCmd string, service bool, restartWait int) *Controller {
+func NewWithConfig(imageName, stopCmd, startCmd string, service bool, restartWait int, logger *slog.Logger) *Controller {
 	return &Controller{
 		imageName:   imageName,
 		stopCmd:     stopCmd,
 		startCmd:    startCmd,
 		service:     service,
 		restartWait: restartWait,
+		logger:      logger,
 	}
+}
+
+// log returns the controller's logger, falling back to slog.Default when nil
+// (e.g. in unit tests that construct a bare Controller struct literal).
+func (c *Controller) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
 }
 
 // Stop terminates the process by image name, stop_cmd, or service.
 // After stopping, waits for RestartWait seconds before returning.
 func (c *Controller) Stop(ctx context.Context) error {
 	if c.imageName == "" && c.stopCmd == "" && !c.service {
-		slog.Default().Debug("process stop skipped",
+		c.log().Debug("process stop skipped",
 			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "no image_name, stop_cmd, or service configured",
@@ -51,7 +62,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 
 	// Custom stop command takes priority
 	if c.stopCmd != "" {
-		slog.Default().Info("process stop strategy",
+		c.log().Info("process stop strategy",
 			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "custom stop_cmd configured, takes priority",
@@ -62,7 +73,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 			return err
 		}
 	} else if c.service {
-		slog.Default().Info("process stop strategy",
+		c.log().Info("process stop strategy",
 			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "service mode enabled, no custom stop_cmd",
@@ -73,7 +84,7 @@ func (c *Controller) Stop(ctx context.Context) error {
 			return err
 		}
 	} else {
-		slog.Default().Info("process stop strategy",
+		c.log().Info("process stop strategy",
 			"step", "process.stop",
 			"image", c.imageName,
 			"reason", "no stop_cmd and no service, terminate by image name",
@@ -145,7 +156,7 @@ func (c *Controller) runCustomCmd(ctx context.Context, cmdStr string) error {
 // Start launches the process by image name, start_cmd, or service.
 func (c *Controller) Start(ctx context.Context, path string) error {
 	if c.imageName == "" && c.startCmd == "" && !c.service {
-		slog.Default().Debug("process start skipped",
+		c.log().Debug("process start skipped",
 			"step", "process.start",
 			"image", c.imageName,
 			"reason", "no image_name, start_cmd, or service configured",
@@ -156,7 +167,7 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 
 	// Custom start command takes priority
 	if c.startCmd != "" {
-		slog.Default().Info("process start strategy",
+		c.log().Info("process start strategy",
 			"step", "process.start",
 			"image", c.imageName,
 			"reason", "custom start_cmd configured, takes priority",
@@ -167,7 +178,7 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 
 	// Service mode
 	if c.service {
-		slog.Default().Info("process start strategy",
+		c.log().Info("process start strategy",
 			"step", "process.start",
 			"image", c.imageName,
 			"reason", "service mode enabled, no custom start_cmd",
@@ -178,7 +189,7 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 
 	// Launch by path (image_name is used for identification, path is the executable)
 	if path == "" {
-		slog.Default().Error("process start failed",
+		c.log().Error("process start failed",
 			"step", "process.start",
 			"image", c.imageName,
 			"reason", "no start_cmd/service and no executable path provided",
@@ -187,7 +198,7 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 		return fmt.Errorf("process start: no path provided for %s", c.imageName)
 	}
 
-	slog.Default().Info("process start strategy",
+	c.log().Info("process start strategy",
 		"step", "process.start",
 		"image", c.imageName,
 		"path", path,
