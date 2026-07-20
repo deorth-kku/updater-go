@@ -2,9 +2,11 @@ package extractor
 
 import (
 	"log/slog"
+	"slices"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
+	"github.com/deorth-kku/updater-go/internal/platform"
 )
 
 func TestFileSelector_Match(t *testing.T) {
@@ -103,11 +105,17 @@ func TestNewFileSelector_ExpandKeywords(t *testing.T) {
 		Filetype: config.StringOrSlice{"zip"},
 	}, config.DecompressConfig{}, slog.Default())
 
-	if len(fs.Keywords) != 2 {
-		t.Fatalf("Keywords len = %d, want 2", len(fs.Keywords))
+	// "%arch" expands to the full architecture candidate list (gap #27), so the
+	// keyword count is len(ArchCandidates)+1 for "release".
+	want := len(platform.ArchCandidates()) + 1
+	if len(fs.Keywords) != want {
+		t.Fatalf("Keywords len = %d, want %d", len(fs.Keywords), want)
 	}
 	if fs.Keywords[0] == "%arch" {
 		t.Errorf("Keywords[0] not expanded, still %s", fs.Keywords[0])
+	}
+	if !slices.Contains(fs.Keywords, "release") {
+		t.Errorf("Keywords missing verbatim entry %q: %v", "release", fs.Keywords)
 	}
 }
 

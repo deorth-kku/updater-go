@@ -29,9 +29,9 @@ func TestArchName(t *testing.T) {
 	if got == "" {
 		t.Error("ArchName() returned empty string")
 	}
-	// On this system it should match runtime.GOARCH
-	if runtime.GOARCH == "amd64" && got != "amd64" {
-		t.Errorf("ArchName() = %q on amd64, want %q", got, "amd64")
+	// ArchName is the primary candidate from ArchCandidates.
+	if got != ArchCandidates()[0] {
+		t.Errorf("ArchName() = %q, want primary candidate %q", got, ArchCandidates()[0])
 	}
 }
 
@@ -43,11 +43,15 @@ func TestOSName(t *testing.T) {
 }
 
 func TestExpandKeywords(t *testing.T) {
+	// An exact "%arch" token expands to the full candidate list; "%OS" to the
+	// OS candidate list; others are kept verbatim (gap #27).
 	input := []string{"%arch", "release", "%OS"}
 	got := ExpandKeywords(input)
-	want := []string{ArchName(), "release", OSName()}
+	want := append([]string{}, ArchCandidates()...)
+	want = append(want, "release")
+	want = append(want, OSCandidates()...)
 	if len(got) != len(want) {
-		t.Fatalf("ExpandKeywords() len = %d, want %d", len(got), len(want))
+		t.Fatalf("ExpandKeywords() len = %d, want %d (%v)", len(got), len(want), want)
 	}
 	for i := range got {
 		if got[i] != want[i] {
@@ -112,19 +116,44 @@ func TestExpandKeywords_NoExpansion(t *testing.T) {
 }
 
 func TestExpandKeywords_Mixed(t *testing.T) {
+	// Exact "%arch"/"%OS" tokens expand to candidate lists; "static" is kept.
 	input := []string{"%arch", "static", "%OS"}
 	got := ExpandKeywords(input)
-	if len(got) != 3 {
-		t.Fatalf("ExpandKeywords() len = %d, want 3", len(got))
+	want := append([]string{}, ArchCandidates()...)
+	want = append(want, "static")
+	want = append(want, OSCandidates()...)
+	if len(got) != len(want) {
+		t.Fatalf("ExpandKeywords() len = %d, want %d", len(got), len(want))
 	}
-	if got[0] == "%arch" {
-		t.Errorf("ExpandKeywords()[0] not expanded, still %s", got[0])
+	if got[len(ArchCandidates())] != "static" {
+		t.Errorf("ExpandKeywords()[%d] = %q, want %q", len(ArchCandidates()), got[len(ArchCandidates())], "static")
 	}
-	if got[1] != "static" {
-		t.Errorf("ExpandKeywords()[1] = %q, want %q", got[1], "static")
+}
+
+func TestArchCandidates_NonEmpty(t *testing.T) {
+	if len(ArchCandidates()) == 0 {
+		t.Error("ArchCandidates() returned empty list")
 	}
-	if got[2] == "%OS" {
-		t.Errorf("ExpandKeywords()[2] not expanded, still %s", got[2])
+	if ArchCandidates()[0] != ArchName() {
+		t.Errorf("ArchCandidates()[0] = %q, want primary %q", ArchCandidates()[0], ArchName())
+	}
+}
+
+func TestOSCandidates_NonEmpty(t *testing.T) {
+	if len(OSCandidates()) == 0 {
+		t.Error("OSCandidates() returned empty list")
+	}
+	// Linux must include "ubuntu" per updater-rpc (gap #27).
+	if runtime.GOOS == "linux" {
+		found := false
+		for _, c := range OSCandidates() {
+			if c == "ubuntu" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("OSCandidates() = %v, want to include ubuntu", OSCandidates())
+		}
 	}
 }
 
@@ -136,24 +165,9 @@ func TestExpandVariables_Tilde(t *testing.T) {
 }
 
 func TestArchName_RuntimeConsistency(t *testing.T) {
-	// ArchName should match runtime.GOARCH for known values
-	switch runtime.GOARCH {
-	case "amd64":
-		if ArchName() != "amd64" {
-			t.Errorf("ArchName() = %q on amd64, want amd64", ArchName())
-		}
-	case "arm64":
-		if ArchName() != "arm64" {
-			t.Errorf("ArchName() = %q on arm64, want arm64", ArchName())
-		}
-	case "386":
-		if ArchName() != "x86" {
-			t.Errorf("ArchName() = %q on 386, want x86", ArchName())
-		}
-	case "arm":
-		if ArchName() != "arm" {
-			t.Errorf("ArchName() = %q on arm, want arm", ArchName())
-		}
+	// ArchName's primary candidate must be the first entry of ArchCandidates.
+	if ArchName() != ArchCandidates()[0] {
+		t.Errorf("ArchName() = %q, want primary candidate %q", ArchName(), ArchCandidates()[0])
 	}
 }
 
