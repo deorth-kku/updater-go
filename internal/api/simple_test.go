@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -158,6 +159,8 @@ func TestBuildFromDirectURL_WithRedirect(t *testing.T) {
 	defer server.Close()
 	serverURL = server.URL
 
+	// Python's direct-URL branch does NOT apply try_redirect (HEAD-follow);
+	// a plain redirect is left as-is. Verify the URL is unchanged.
 	s := &SimpleSpiderAPI{
 		dlCfg: config.DownloadConfig{
 			TryRedirect: true,
@@ -169,8 +172,8 @@ func TestBuildFromDirectURL_WithRedirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
-	if release.URL != serverURL+"/final" {
-		t.Errorf("URL = %q, want %q", release.URL, serverURL+"/final")
+	if release.URL != serverURL+"/original" {
+		t.Errorf("URL = %q, want %q", release.URL, serverURL+"/original")
 	}
 }
 
@@ -192,9 +195,109 @@ func TestBuildFromDirectURL_RedirectFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
-	// Should still return the original URL (redirect failed silently)
 	if release.URL != server.URL+"/broken" {
 		t.Errorf("URL = %q, want %q", release.URL, server.URL+"/broken")
+	}
+}
+
+// TestBuildFromDirectURL_DataPost verifies download.data triggers a POST that
+// follows the 302/303 Location (gap #6).
+func TestBuildFromDirectURL_DataPost(t *testing.T) {
+	var gotMethod string
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		_ = r.ParseForm()
+		gotForm = r.Form
+		if r.Method == http.MethodPost {
+			w.Header().Set("Location", "/real/app.zip")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	s := &SimpleSpiderAPI{
+		dlCfg: config.DownloadConfig{
+			URL:  server.URL + "/dl",
+			Data: map[string]any{"token": "abc", "id": 42},
+		},
+		verCfg: config.VersionConfig{},
+	}
+
+	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/dl")
+	if err != nil {
+		t.Fatalf("buildFromDirectURL() error = %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want %q", gotMethod, http.MethodPost)
+	}
+	if got := gotForm.Get("token"); got != "abc" {
+		t.Errorf("form token = %q, want %q", got, "abc")
+	}
+	if got := gotForm.Get("id"); got != "42" {
+		t.Errorf("form id = %q, want %q", got, "42")
+	}
+	// Python returns the raw Location header (relative) unchanged.
+	if release.URL != "/real/app.zip" {
+		t.Errorf("URL = %q, want %q", release.URL, "/real/app.zip")
+	}
+}
+
+// TestExtractURLFromPage_PerLevelIndexes verifies each regex level can select
+// a specific match index via download.indexes (gap #17). Level 0 matches on
+// the page; level 1 is fetched from the resolved URL and matched there.
+func TestExtractURLFromPage_PerLevelIndexes(t *testing.T) {
+	page := `<a href="/level1.html">next</a>`
+	level1 := `<a href="https://final.example.com/app.zip">app</a>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/level1.html" {
+			w.Write([]byte(level1))
+			return
+		}
+		w.Write([]byte("not found"))
+	}))
+	defer srv.Close()
+
+	s := &SimpleSpiderAPI{
+		pageURL: srv.URL + "/",
+		dlCfg: config.DownloadConfig{
+			Regexes: []string{`href="([^"]+)"`, `href="([^"]+)"`},
+			Indexes: []int{0, 0},
+		},
+		verCfg: config.VersionConfig{},
+	}
+	got, err := s.extractURLFromPage(t.Context(), page)
+	if err != nil {
+		t.Fatalf("extractURLFromPage() error = %v", err)
+	}
+	// Level 0 resolves /level1.html; level 1 is fetched and resolves the
+	// absolute final URL. The final resolved URL is returned.
+	want := "https://final.example.com/app.zip"
+	if got != want {
+		t.Errorf("extractURLFromPage() = %q, want %q", got, want)
+	}
+}
+
+// TestExtractVersion_Index verifies version.index selects the Nth regex match
+// on the filename or page (gap #16).
+func TestExtractVersion_Index(t *testing.T) {
+	page := `version 1.2.3 and version 9.8.7`
+	s := &SimpleSpiderAPI{
+		dlCfg: config.DownloadConfig{},
+		verCfg: config.VersionConfig{
+			Regex:     `(\d+\.\d+\.\d+)`,
+			FromPage:  true,
+			Index:     1,
+		},
+	}
+	got, err := s.extractVersion("https://example.com/x.zip", page)
+	if err != nil {
+		t.Fatalf("extractVersion() error = %v", err)
+	}
+	if got != "9.8.7" {
+		t.Errorf("extractVersion() = %q, want %q", got, "9.8.7")
 	}
 }
 

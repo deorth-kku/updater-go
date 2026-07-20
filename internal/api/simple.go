@@ -64,7 +64,7 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	// Extract download URL from regexes
-	dlURL, err := s.extractURLFromPage(page)
+	dlURL, err := s.extractURLFromPage(ctx, page)
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +106,14 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 }
 
 func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string) (*Release, error) {
-	if s.dlCfg.TryRedirect {
-		redirURL, err := followRedirect(ctx, dlURL)
+	// Mirrors updater-rpc simplespider.getDlUrl: when download.data is
+	// configured, POST it to the direct URL and use the 3xx Location header.
+	// Note: try_redirect (HEAD-follow) is NOT applied to a direct URL in the
+	// Python reference — only to the regex-chain branch.
+	if len(s.dlCfg.Data) > 0 {
+		located, err := postFormAndFollow(ctx, dlURL, s.dlCfg.Data)
 		if err == nil {
-			dlURL = redirURL
+			dlURL = located
 		}
 	}
 
@@ -185,25 +189,68 @@ func (s *SimpleSpiderAPI) fetchPage(ctx context.Context) (string, error) {
 	return string(body), nil
 }
 
-func (s *SimpleSpiderAPI) extractURLFromPage(page string) (string, error) {
+// fetchURL performs a GET (with the configured headers) on an arbitrary URL
+// and returns the response body as a string. Used to fetch the content of
+// each resolved URL in a multi-level simplespider chain.
+func (s *SimpleSpiderAPI) fetchURL(ctx context.Context, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	for k, v := range s.headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("simplespider fetch %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func (s *SimpleSpiderAPI) extractURLFromPage(ctx context.Context, page string) (string, error) {
 	if len(s.dlCfg.Regexes) == 0 {
 		return "", fmt.Errorf("no regexes configured for simplespider")
 	}
 
+	// Per-level index selection, mirroring updater-rpc's indexes[lv].
+	// Missing entries default to 0 (first match).
+	indexes := s.dlCfg.Indexes
+	if len(indexes) == 0 {
+		indexes = make([]int, len(s.dlCfg.Regexes))
+	}
+
 	currentURL := s.pageURL
+	// Level 0 applies its regex to the fetched page; each subsequent level
+	// applies its regex to the (fetched) content of the previously resolved
+	// URL, matching updater-rpc's page_regex_url behavior.
+	source := page
 	for i, pattern := range s.dlCfg.Regexes {
+		idx := 0
+		if i < len(indexes) {
+			idx = indexes[i]
+		}
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			return "", fmt.Errorf("compile regex %d: %w", i, err)
 		}
 
-		// Apply regex to the page HTML, not the URL
-		matches := re.FindStringSubmatch(page)
-		if len(matches) < 2 {
-			return "", fmt.Errorf("regex %d did not match: %s", i, pattern)
+		// Apply regex to the level's source HTML, mirroring re.findall(...)[index].
+		matches := re.FindAllStringSubmatch(source, -1)
+		if len(matches) == 0 || idx >= len(matches) {
+			return "", fmt.Errorf("regex %d did not match (index %d): %s", i, idx, pattern)
+		}
+		grp := matches[idx]
+		rawURL := grp[0]
+		if len(grp) > 1 {
+			rawURL = grp[1]
 		}
 
-		rawURL := unescapeHTML(matches[1])
+		rawURL = unescapeHTML(rawURL)
 
 		// Resolve relative URLs
 		if strings.HasPrefix(rawURL, "/") {
@@ -214,6 +261,13 @@ func (s *SimpleSpiderAPI) extractURLFromPage(page string) (string, error) {
 		}
 
 		currentURL = rawURL
+		if i < len(s.dlCfg.Regexes)-1 {
+			fetched, ferr := s.fetchURL(ctx, currentURL)
+			if ferr != nil {
+				return "", fmt.Errorf("fetch level %d url %s: %w", i+1, currentURL, ferr)
+			}
+			source = fetched
+		}
 	}
 
 	dlURL := currentURL
@@ -230,24 +284,26 @@ func (s *SimpleSpiderAPI) extractURLFromPage(page string) (string, error) {
 }
 
 func (s *SimpleSpiderAPI) extractVersion(dlURL, page string) (string, error) {
-	if s.verCfg.FromPage && s.verCfg.Regex != "" {
-		re, err := regexp.Compile(s.verCfg.Regex)
-		if err != nil {
-			return "", fmt.Errorf("compile version regex: %w", err)
-		}
-		if matches := re.FindStringSubmatch(page); len(matches) > 1 {
-			return matches[1], nil
-		}
+	// Mirrors updater-rpc's getVersion(regex, from_page, index): when
+	// from_page is set the regex is applied to the page text, otherwise to
+	// the download filename. version.index selects which regex match to use.
+	source := extractFilename(dlURL)
+	if s.verCfg.FromPage {
+		source = page
 	}
-
 	if s.verCfg.Regex != "" {
 		re, err := regexp.Compile(s.verCfg.Regex)
 		if err != nil {
 			return "", fmt.Errorf("compile version regex: %w", err)
 		}
-		fileName := extractFilename(dlURL)
-		if matches := re.FindStringSubmatch(fileName); len(matches) > 1 {
-			return matches[1], nil
+		matches := re.FindAllStringSubmatch(source, -1)
+		idx := s.verCfg.Index
+		if len(matches) > 0 && idx < len(matches) {
+			grp := matches[idx]
+			if len(grp) > 1 && grp[1] != "" {
+				return grp[1], nil
+			}
+			return grp[0], nil
 		}
 	}
 
@@ -274,6 +330,35 @@ func followRedirect(ctx context.Context, rawURL string) (string, error) {
 		return resp.Header.Get("Location"), nil
 	}
 	return rawURL, nil
+}
+
+// postFormAndFollow POSTs form-encoded data to rawURL and, if the server
+// responds with a 302/303, returns the Location header. This mirrors
+// updater-rpc's simplespider.getDlUrl behaviour for direct URLs with data.
+func postFormAndFollow(ctx context.Context, rawURL string, data map[string]any) (string, error) {
+	form := url.Values{}
+	for k, v := range data {
+		form.Set(k, fmt.Sprintf("%v", v))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 302 || resp.StatusCode == 303 {
+		return resp.Header.Get("Location"), nil
+	}
+	return "", fmt.Errorf("download.data POST returned status %d (no redirect)", resp.StatusCode)
 }
 
 func extractFilename(rawURL string) string {
