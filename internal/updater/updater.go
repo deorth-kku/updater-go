@@ -434,7 +434,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 
 	// For GitHub releases, filter assets by keywords and index
 	if len(rel.Assets) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.log().With("comp", "selector"))
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(assetNames(rel.Assets))
 		u.log().Debug("assets matched",
 			"project", u.projectCfg.Basic.ProjectName,
@@ -469,7 +469,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 
 	// For AppVeyor artifacts
 	if len(rel.Artifacts) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.log().With("comp", "selector"))
+		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(artifactNames(rel.Artifacts))
 		u.log().Debug("artifacts matched",
 			"project", u.projectCfg.Basic.ProjectName,
@@ -527,6 +527,18 @@ func assetNames(assets []api.Asset) []string {
 		names[i] = a.Name
 	}
 	return names
+}
+
+// isInstallMode mirrors updater-rpc's install flag used to decide whether the
+// update_keyword branch is active (gap #9). For use_exe_version projects,
+// install mode is true when the installed exe is missing; otherwise it is true
+// when there is no recorded currentVersion.
+func (u *Updater) isInstallMode() bool {
+	if u.projectCfg.Version.UseExeVersion {
+		_, err := os.Stat(u.exePath())
+		return err != nil
+	}
+	return u.entry.Version == ""
 }
 
 // applyIndex narrows a list of matched filenames to the element(s) selected by

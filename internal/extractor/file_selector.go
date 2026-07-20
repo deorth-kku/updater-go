@@ -18,10 +18,23 @@ type FileSelector struct {
 }
 
 // NewFileSelector creates a FileSelector from the download and decompress configs.
-func NewFileSelector(dlCfg config.DownloadConfig, dcCfg config.DecompressConfig, logger *slog.Logger) *FileSelector {
+// install mirrors updater-rpc's install mode: when false and update_keyword is
+// configured, the update_keyword/exclude_keyword pair is used instead of
+// keyword/exclude_keyword (gap #9). When install is true (or update_keyword is
+// empty) the normal keyword is used and update_keyword is appended to the
+// exclude list, exactly like Python's getDlUrl branching.
+func NewFileSelector(dlCfg config.DownloadConfig, dcCfg config.DecompressConfig, install bool, logger *slog.Logger) *FileSelector {
+	var keywords, excludeKeywords config.StringOrSlice
+	if len(dlCfg.UpdateKeyword) > 0 && !install {
+		keywords = dlCfg.UpdateKeyword
+		excludeKeywords = dlCfg.ExcludeKeyword
+	} else {
+		keywords = dlCfg.Keyword
+		excludeKeywords = append(append(config.StringOrSlice{}, dlCfg.ExcludeKeyword...), dlCfg.UpdateKeyword...)
+	}
 	return &FileSelector{
-		Keywords:                  platform.ExpandKeywords(dlCfg.Keyword),
-		ExcludeKeywords:           platform.ExpandKeywords(dlCfg.ExcludeKeyword),
+		Keywords:                  platform.ExpandKeywords(keywords),
+		ExcludeKeywords:           platform.ExpandKeywords(excludeKeywords),
 		Filetype:                  dlCfg.Filetype.First(),
 		ExcludeFileTypeWhenUpdate: dcCfg.ExcludeFileTypeWhenUpdate,
 		logger:                    logger,

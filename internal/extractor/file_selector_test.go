@@ -79,7 +79,7 @@ func TestFileSelector_SelectFiles(t *testing.T) {
 		Keyword:        config.StringOrSlice{"win", "vulkan"},
 		Filetype:       config.StringOrSlice{"zip"},
 		ExcludeKeyword: config.StringOrSlice{"cudart"},
-	}, config.DecompressConfig{}, slog.Default())
+	}, config.DecompressConfig{}, false, slog.Default())
 
 	input := []string{
 		"llama-win-vulkan.zip",
@@ -103,7 +103,7 @@ func TestNewFileSelector_ExpandKeywords(t *testing.T) {
 	fs := NewFileSelector(config.DownloadConfig{
 		Keyword:  config.StringOrSlice{"%arch", "release"},
 		Filetype: config.StringOrSlice{"zip"},
-	}, config.DecompressConfig{}, slog.Default())
+	}, config.DecompressConfig{}, false, slog.Default())
 
 	// "%arch" expands to the full architecture candidate list (gap #27), so the
 	// keyword count is len(ArchCandidates)+1 for "release".
@@ -128,6 +128,7 @@ func TestFileSelector_ExcludeFileTypeWhenUpdate(t *testing.T) {
 		config.DecompressConfig{
 			ExcludeFileTypeWhenUpdate: []string{".sig", ".sha256"},
 		},
+		false,
 		slog.Default(),
 	)
 
@@ -147,5 +148,50 @@ func TestFileSelector_ExcludeFileTypeWhenUpdate(t *testing.T) {
 				t.Errorf("Match(%q) = %v, want %v", tt.name, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestFileSelector_UpdateKeywordSwitching verifies the install/update keyword
+// branch (gap #9), mirroring updater-rpc's getDlUrl logic.
+func TestFileSelector_UpdateKeywordSwitching(t *testing.T) {
+	dl := config.DownloadConfig{
+		Keyword:        config.StringOrSlice{"install-build"},
+		UpdateKeyword:  config.StringOrSlice{"update-build"},
+		ExcludeKeyword: config.StringOrSlice{"beta"},
+		Filetype:       config.StringOrSlice{"zip"},
+	}
+
+	// Re-update mode: update_keyword replaces keyword; exclude_keyword kept.
+	fsUpdate := NewFileSelector(dl, config.DecompressConfig{}, false, slog.Default())
+	if !slices.Contains(fsUpdate.Keywords, "update-build") {
+		t.Errorf("update mode keywords missing update-build: %v", fsUpdate.Keywords)
+	}
+	if slices.Contains(fsUpdate.Keywords, "install-build") {
+		t.Errorf("update mode keywords should not contain install-build: %v", fsUpdate.Keywords)
+	}
+
+	// Install mode: keyword used; update_keyword appended to exclude list.
+	fsInstall := NewFileSelector(dl, config.DecompressConfig{}, true, slog.Default())
+	if !slices.Contains(fsInstall.Keywords, "install-build") {
+		t.Errorf("install mode keywords missing install-build: %v", fsInstall.Keywords)
+	}
+	if !slices.Contains(fsInstall.ExcludeKeywords, "update-build") {
+		t.Errorf("install mode exclude missing update-build: %v", fsInstall.ExcludeKeywords)
+	}
+	if !slices.Contains(fsInstall.ExcludeKeywords, "beta") {
+		t.Errorf("install mode exclude missing beta: %v", fsInstall.ExcludeKeywords)
+	}
+}
+
+// TestFileSelector_UpdateKeywordEmptyUsesKeyword verifies that when
+// update_keyword is empty the normal keyword branch is always used.
+func TestFileSelector_UpdateKeywordEmptyUsesKeyword(t *testing.T) {
+	dl := config.DownloadConfig{
+		Keyword:  config.StringOrSlice{"install-build"},
+		Filetype: config.StringOrSlice{"zip"},
+	}
+	fs := NewFileSelector(dl, config.DecompressConfig{}, false, slog.Default())
+	if !slices.Contains(fs.Keywords, "install-build") {
+		t.Errorf("expected install-build in keywords: %v", fs.Keywords)
 	}
 }
