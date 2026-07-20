@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -19,6 +21,16 @@ type Controller struct {
 	service     bool
 	restartWait int
 	logger      *slog.Logger
+	// stored holds the recorded (cmdline, cwd) of running processes captured
+	// during a non-service stop, so they can be relaunched with the original
+	// command line and working directory on start (gap #22).
+	stored []procLaunch
+}
+
+// procLaunch is a recorded process launch (cmdline + cwd) for relaunch.
+type procLaunch struct {
+	cmdline []string
+	cwd     string
 }
 
 // New creates a new process Controller.
@@ -109,6 +121,9 @@ func (c *Controller) Stop(ctx context.Context) error {
 }
 
 func (c *Controller) stopUnix(ctx context.Context) error {
+	// Record running processes' cmdline/cwd before killing so they can be
+	// relaunched with the original command + working directory (gap #22).
+	c.stored = findProcLaunches(c.imageName)
 	cmd := exec.CommandContext(ctx, "pkill", "-f", c.imageName)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -122,10 +137,63 @@ func (c *Controller) stopWindows(ctx context.Context) error {
 	return cmd.Run()
 }
 
+// findProcLaunches returns the recorded (cmdline, cwd) of processes whose
+// comm (process name) matches name. This mirrors updater-rpc's psutil
+// proc.name() matching. Implemented for Unix via /proc.
+func findProcLaunches(name string) []procLaunch {
+	var out []procLaunch
+	if runtime.GOOS == "windows" {
+		return out
+	}
+	procDir, err := os.ReadDir("/proc")
+	if err != nil {
+		return out
+	}
+	for _, e := range procDir {
+		if !e.IsDir() {
+			continue
+		}
+		pidDir := filepath.Join("/proc", e.Name())
+		// comm is the process name (matches psutil proc.name()).
+		commBytes, err := os.ReadFile(filepath.Join(pidDir, "comm"))
+		if err != nil {
+			continue
+		}
+		comm := strings.TrimSpace(string(commBytes))
+		if comm != name {
+			continue
+		}
+		cl, err := os.ReadFile(filepath.Join(pidDir, "cmdline"))
+		if err != nil {
+			continue
+		}
+		cmdline := splitCmdline(cl)
+		cwd, err := os.Readlink(filepath.Join(pidDir, "cwd"))
+		if err != nil {
+			cwd = ""
+		}
+		out = append(out, procLaunch{cmdline: cmdline, cwd: cwd})
+	}
+	return out
+}
+
+// splitCmdline splits a /proc/<pid>/cmdline null-separated blob into args.
+func splitCmdline(b []byte) []string {
+	if len(b) == 0 {
+		return nil
+	}
+	parts := strings.Split(string(b), "\x00")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
+
 func (c *Controller) stopService(ctx context.Context) error {
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.CommandContext(ctx, "sc", "stop", c.imageName)
+		// updater-rpc uses `net <command> <service>` on Windows (gap #21).
+		cmd := exec.CommandContext(ctx, "net", "stop", c.imageName)
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 		return cmd.Run()
@@ -180,6 +248,41 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 		return c.startService(ctx)
 	}
 
+	// Non-service restart: if we recorded the original (cmdline, cwd) of the
+	// killed processes during stop (gap #22), relaunch them verbatim with
+	// their original working directory. This preserves arguments/cwd that a
+	// plain path-based launch would lose.
+	if len(c.stored) > 0 && runtime.GOOS != "windows" {
+		var firstErr error
+		for _, pl := range c.stored {
+			if len(pl.cmdline) == 0 {
+				continue
+			}
+			c.log().Info("process start strategy",
+				"image", c.imageName,
+				"cmdline", strings.Join(pl.cmdline, " "),
+				"cwd", pl.cwd,
+				"reason", "relaunch recorded process with original cmdline/cwd (gap #22)",
+				"result", "start recorded",
+			)
+			cmd := exec.CommandContext(ctx, pl.cmdline[0], pl.cmdline[1:]...)
+			cmd.Stdout = nil
+			cmd.Stderr = nil
+			if pl.cwd != "" {
+				cmd.Dir = pl.cwd
+			}
+			if err := cmd.Start(); err != nil {
+				c.log().Warn("relaunch recorded process failed",
+					"image", c.imageName, "error", err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+		c.stored = nil
+		return firstErr
+	}
+
 	// Launch by path (image_name is used for identification, path is the executable)
 	if path == "" {
 		c.log().Error("process start failed",
@@ -214,7 +317,8 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 func (c *Controller) startService(ctx context.Context) error {
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.CommandContext(ctx, "sc", "start", c.imageName)
+		// updater-rpc uses `net <command> <service>` on Windows (gap #21).
+		cmd := exec.CommandContext(ctx, "net", "start", c.imageName)
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 		return cmd.Run()
