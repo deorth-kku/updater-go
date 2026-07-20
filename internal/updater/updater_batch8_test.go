@@ -131,6 +131,43 @@ func TestDownloadFilename_VerGlobal(t *testing.T) {
 	}
 }
 
+// TestDownloadFilename_URLDerivedVersion verifies gap #7: when
+// add_version_to_filename is true, the version is inserted into URL-derived
+// filenames (before the matching filetype extension), exactly like the Python
+// reference's download() does for both override and derived names.
+func TestDownloadFilename_URLDerivedVersion(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{APIType: "github"},
+		Download: config.DownloadConfig{
+			AddVersionToFilename: true,
+			Filetype:             config.StringOrSlice{"7z", "zip"},
+		},
+	}
+	u := &Updater{projectCfg: projCfg}
+
+	// Normal case: strip the .7z extension, insert sanitized version.
+	got := u.downloadFilename("1.2.3", "http://example.com/build.7z")
+	want := "build_1.2.3.7z"
+	if got != want {
+		t.Errorf("downloadFilename() = %q, want %q", got, want)
+	}
+
+	// Disallowed characters in the version are replaced with spaces (the
+	// trailing '>' becomes a trailing space, matching the Python reference).
+	got = u.downloadFilename("1.0<beta>", "http://example.com/app.zip")
+	want = "app_1.0 beta .zip"
+	if got != want {
+		t.Errorf("downloadFilename() = %q, want %q", got, want)
+	}
+
+	// No matching filetype: name returned unchanged.
+	got = u.downloadFilename("1.2.3", "http://example.com/notes.txt")
+	want = "notes.txt"
+	if got != want {
+		t.Errorf("downloadFilename() = %q, want %q", got, want)
+	}
+}
+
 // TestUpdate_WaitForProcessExit verifies gap #4: when allow_restart is false
 // and a process matching ImageName is running, the updater waits for it to exit
 // before completing. We spawn a real long-running process, assert the updater

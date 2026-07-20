@@ -646,6 +646,7 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 	version = strings.ReplaceAll(version, "%VER", version)
 	if u.projectCfg.Download.FilenameOverride != "" {
 		name := u.projectCfg.Download.FilenameOverride
+		usedVersionToken := strings.Contains(name, "{version}")
 		if u.projectCfg.Download.AddVersionToFilename {
 			name = strings.ReplaceAll(name, "{version}", version)
 			name = strings.ReplaceAll(name, "%arch", runtime.GOARCH)
@@ -653,6 +654,11 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 		}
 		// %VER may also appear verbatim in the override (gap #25).
 		name = strings.ReplaceAll(name, "%VER", version)
+		// gap #7: add_version_to_filename also applies to the override name,
+		// but only when the {version} token wasn't already used for placement.
+		if u.projectCfg.Download.AddVersionToFilename && !usedVersionToken {
+			name = addVersionToName(name, version, u.projectCfg.Download.Filetype)
+		}
 		u.log().Debug("download filename resolved",
 			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "filename_override configured (version/arch/os substituted)",
@@ -663,11 +669,41 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 	// Extract filename from URL
 	parts := strings.Split(dlURL, "/")
 	name := parts[len(parts)-1]
+	// gap #7: mirror updater-rpc's download() — insert the sanitized version
+	// before the filetype extension even for URL-derived filenames.
+	if u.projectCfg.Download.AddVersionToFilename {
+		name = addVersionToName(name, version, u.projectCfg.Download.Filetype)
+	}
 	u.log().Debug("download filename resolved",
 		"project", u.projectCfg.Basic.ProjectName,
 		"reason", "no override, derived from last URL path segment",
 		"result", name,
 	)
+	return name
+}
+
+// sanitizeVersion replaces characters disallowed in filenames (mirrors
+// updater-rpc's download() loop over < > / \ | : * ?).
+func sanitizeVersion(v string) string {
+	return strings.NewReplacer(
+		"<", " ", ">", " ", "/", " ", "\\", " ",
+		"|", " ", ":", " ", "*", " ", "?", " ",
+	).Replace(v)
+}
+
+// addVersionToName inserts a sanitized version into the filename, placed right
+// before the matching filetype extension. Mirrors updater-rpc's download():
+// strip the trailing filetype, rstrip a dot, append "_<version>.<filetype>".
+// If no configured filetype matches the name, the name is returned unchanged.
+func addVersionToName(name, version string, filetypes []string) string {
+	version = sanitizeVersion(version)
+	for _, ft := range filetypes {
+		if strings.HasSuffix(name, ft) {
+			base := strings.TrimSuffix(name, ft)
+			base = strings.TrimSuffix(base, ".")
+			return base + "_" + version + "." + ft
+		}
+	}
 	return name
 }
 
