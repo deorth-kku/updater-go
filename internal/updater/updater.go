@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -235,6 +236,33 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		"result", localPath,
 	)
 
+	// Step 4.5: When restart is NOT allowed (gap #4), mirror updater-rpc's
+	// `elif popup` branch: if the target process is still running, log a
+	// warning and wait for it to exit before extracting, so we don't extract
+	// over a running/locked file.
+	if !u.projectCfg.Process.AllowRestart {
+		imageName := u.projectCfg.Process.ImageName
+		if imageName == "" {
+			imageName = result.ProjectName
+		}
+		ctrl := process.New(imageName, u.log().With("comp", "process"))
+		if ctrl.IsRunning() {
+			u.log().Warn("waiting for process to stop before extracting",
+				"project", result.ProjectName,
+				"image", imageName,
+				"reason", "allow_restart is false and process is running",
+				"result", "wait",
+			)
+			if err := ctrl.WaitForStop(ctx, 5*time.Minute); err != nil {
+				u.log().Warn("timed out waiting for process to stop",
+					"project", result.ProjectName,
+					"image", imageName,
+					"error", err,
+				)
+			}
+		}
+	}
+
 	// Step 5: Extract
 	if !u.projectCfg.Decompress.Skip.Bool() {
 		u.log().Info("extracting archive",
@@ -378,25 +406,46 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		}
 	}
 
-	// Step 7: Post-cmds execution
-	postCmds := u.getPostCmds()
-	for _, cmd := range postCmds {
-		replaced := replaceVars(cmd, u.entry.SavePath, result.ProjectName, filename, rel.Version)
+	// Step 7: Post-cmds execution (gap #1). Mirror updater-rpc's main.py loop:
+	// each command has %PATH/%NAME/%DL_FILENAME/%VER replaced, then executed
+	// via the system shell (os.system), so quoting and shell features behave
+	// identically. %DL_FILENAME maps to the downloaded file path (Python's
+	// obj.fullfilename); %PATH is wrapped in double quotes as in the Python
+	// implementation.
+	postCmds := u.projectCfg.PostCmds
+	for _, line := range postCmds {
+		replaced := replaceVars(line, u.entry.SavePath, result.ProjectName, localPath, rel.Version)
 		u.log().Info("running post-cmd",
 			"project", result.ProjectName,
 			"cmd", replaced,
 			"reason", "post-update command configured",
 			"result", "begin",
 		)
-		parts := strings.Fields(replaced)
-		if len(parts) == 0 {
+		if replaced == "" {
 			continue
 		}
-		cmdObj := exec.Command(parts[0], parts[1:]...)
+		var cmdObj *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmdObj = exec.Command("cmd", "/c", replaced)
+		} else {
+			cmdObj = exec.Command("sh", "-c", replaced)
+		}
 		cmdObj.Stdout = nil
 		cmdObj.Stderr = nil
 		if err := cmdObj.Run(); err != nil {
 			u.log().Warn("post-cmd failed", "project", result.ProjectName, "error", err)
+		}
+	}
+
+	// Step 8: Write .VERSION file (gap #3). Mirrors updater-rpc's
+	// updateVersionFile(): when not using use_exe_version, write the detected
+	// version string to <save_path>/<name>.VERSION.
+	if !u.projectCfg.Version.UseExeVersion {
+		if err := u.updateVersionFile(rel.Version); err != nil {
+			u.log().Warn("write .VERSION file failed",
+				"project", result.ProjectName,
+				"error", err,
+			)
 		}
 	}
 
@@ -412,11 +461,23 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	return result
 }
 
-// getPostCmds returns post-update commands from the project config.
-// This is a placeholder — the Python version uses a "post_cmd" field.
-func (u *Updater) getPostCmds() []string {
-	// The Python config has post_cmd as a list of strings in the project config.
-	// For now, return empty — this can be extended when the field is added.
+// updateVersionFile writes the detected version to <save_path>/<name>.VERSION,
+// mirroring updater-rpc's updateVersionFile() for non-use_exe_version projects.
+func (u *Updater) updateVersionFile(version string) error {
+	versionFilePath := filepath.Join(u.entry.SavePath, u.projectCfg.Basic.ProjectName+".VERSION")
+	if err := os.MkdirAll(u.entry.SavePath, 0o755); err != nil {
+		return fmt.Errorf("mkdir save path: %w", err)
+	}
+	if err := os.WriteFile(versionFilePath, []byte(version), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", versionFilePath, err)
+	}
+	u.log().Info("version file written",
+		"project", u.projectCfg.Basic.ProjectName,
+		"path", versionFilePath,
+		"version", version,
+		"reason", "use_exe_version is false",
+		"result", "ok",
+	)
 	return nil
 }
 
@@ -424,12 +485,15 @@ func (u *Updater) getPostCmds() []string {
 func (u *Updater) selectDownloadURL(rel *api.Release) string {
 	// If a direct URL is configured, use it
 	if u.projectCfg.Download.URL != "" {
+		// %VER global replacement (gap #25): the configured URL may embed
+		// %VER which must be expanded to the detected version.
+		url := strings.ReplaceAll(u.projectCfg.Download.URL, "%VER", rel.Version)
 		u.log().Info("download URL selected",
 			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "direct download.url configured, overrides asset matching",
-			"result", u.projectCfg.Download.URL,
+			"result", url,
 		)
-		return u.projectCfg.Download.URL
+		return url
 	}
 
 	// For GitHub releases, filter assets by keywords and index
@@ -577,6 +641,9 @@ func artifactNames(artifacts []api.AppveyorArtifact) []string {
 
 // downloadFilename determines the filename for the download.
 func (u *Updater) downloadFilename(version, dlURL string) string {
+	// %VER global replacement (gap #25): mirror updater-rpc's var_replace
+	// applied to the whole config after version detection.
+	version = strings.ReplaceAll(version, "%VER", version)
 	if u.projectCfg.Download.FilenameOverride != "" {
 		name := u.projectCfg.Download.FilenameOverride
 		if u.projectCfg.Download.AddVersionToFilename {
@@ -584,6 +651,8 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 			name = strings.ReplaceAll(name, "%arch", runtime.GOARCH)
 			name = strings.ReplaceAll(name, "%OS", runtime.GOOS)
 		}
+		// %VER may also appear verbatim in the override (gap #25).
+		name = strings.ReplaceAll(name, "%VER", version)
 		u.log().Debug("download filename resolved",
 			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "filename_override configured (version/arch/os substituted)",

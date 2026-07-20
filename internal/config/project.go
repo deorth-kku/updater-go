@@ -15,6 +15,7 @@ type ProjectConfig struct {
 	Decompress  DecompressConfig `json:"decompress,omitzero"`
 	Process     ProcessConfig    `json:"process,omitzero"`
 	Build       BuildConfig      `json:"build,omitzero"`
+	PostCmds    []string         `json:"post-cmds,omitzero"`
 	JSONVersion string           `json:"jsonver"`
 }
 
