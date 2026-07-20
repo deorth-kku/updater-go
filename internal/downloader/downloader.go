@@ -160,11 +160,11 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir, 
 // updater-rpc's global aria2 args plus the per-project headers (gap #5).
 func (d *Aria2Downloader) buildAria2Options(aria2Dir, filename string, headers map[string]string) map[string]string {
 	opts := map[string]string{
-		"dir":                      aria2Dir,
-		"out":                      filename,
-		"split":                    "16",
+		"dir":                       aria2Dir,
+		"out":                       filename,
+		"split":                     "16",
 		"max-connection-per-server": "16",
-		"continue":                 "true",
+		"continue":                  "true",
 	}
 	if d.proxy != "" {
 		opts["proxy"] = d.proxy

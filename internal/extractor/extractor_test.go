@@ -159,7 +159,7 @@ func TestZipExtractor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -183,7 +183,7 @@ func TestZipExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig(".txt")
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -210,7 +210,7 @@ func TestTarGzExtractor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -235,7 +235,7 @@ func TestTarGzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig(".txt")
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -262,7 +262,7 @@ func TestTarXzExtractor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -287,7 +287,7 @@ func TestTarXzExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig(".txt")
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -314,7 +314,7 @@ func TestSevenZExtractor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -339,7 +339,7 @@ func TestSevenZExtractor_SkipFilter(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig(".txt")
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -409,7 +409,7 @@ func TestSfxExtractor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -431,7 +431,7 @@ func TestSfxExtractor_NotASfx(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), exePath, cfg, slog.Default())
+	d, err := New(t.Context(), exePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -454,7 +454,7 @@ func TestZipExtractor_EvilPath(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -473,7 +473,7 @@ func TestTarGzExtractor_EvilPath(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -492,7 +492,7 @@ func TestTarXzExtractor_EvilPath(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -516,7 +516,7 @@ func TestDecompressor_Extract(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -540,7 +540,7 @@ func TestDecompressor_ExcludeFileType(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig(".txt")
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -568,7 +568,7 @@ func TestDecompressor_SingleDir_True(t *testing.T) {
 	cfg := config.DecompressConfig{
 		SingleDir: config.BoolOrString{BoolVal: true},
 	}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -596,7 +596,7 @@ func TestDecompressor_SingleDir_String(t *testing.T) {
 	cfg := config.DecompressConfig{
 		SingleDir: config.BoolOrString{IsString: true, StringVal: "prefix/"},
 	}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -623,7 +623,7 @@ func TestDecompressor_Skip_True(t *testing.T) {
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
 	cfg.Skip = config.BoolOrString{BoolVal: true}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -653,7 +653,7 @@ func TestDecompressor_CleanInstall(t *testing.T) {
 		SingleDir:    config.BoolOrString{BoolVal: true},
 		CleanInstall: true,
 	}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -678,7 +678,7 @@ func TestDecompressor_NonArchive(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), srcFile, cfg, slog.Default())
+	d, err := New(t.Context(), srcFile, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -705,7 +705,7 @@ func TestDecompressor_Nop(t *testing.T) {
 	cfg := config.DecompressConfig{
 		Skip: config.BoolOrString{BoolVal: true},
 	}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -728,7 +728,7 @@ func TestDecompressor_NonArchiveFile(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), srcPath, cfg, slog.Default())
+	d, err := New(t.Context(), srcPath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -758,7 +758,7 @@ func TestDecompressor_SingleDir_WithPrefix(t *testing.T) {
 	cfg := config.DecompressConfig{
 		SingleDir: config.BoolOrString{IsString: true, StringVal: "app"},
 	}
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -784,7 +784,7 @@ func TestDecompressor_SingleDir_NoSingleDir(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	d, err := New(t.Context(), archivePath, cfg, slog.Default())
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

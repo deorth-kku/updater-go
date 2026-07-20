@@ -243,7 +243,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			"reason", "decompress not skipped",
 			"result", "begin",
 		)
-		ex, err := extractor.New(ctx, localPath, u.projectCfg.Decompress, u.log().With("comp", "extractor"))
+		ex, err := extractor.New(ctx, localPath, u.projectCfg.Decompress, u.isInstallMode(), u.projectCfg.Process.ImageName, u.log().With("comp", "extractor"))
 		if err != nil {
 			result.Error = fmt.Errorf("detect format %w", err)
 			return result

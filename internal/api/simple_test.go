@@ -287,9 +287,9 @@ func TestExtractVersion_Index(t *testing.T) {
 	s := &SimpleSpiderAPI{
 		dlCfg: config.DownloadConfig{},
 		verCfg: config.VersionConfig{
-			Regex:     `(\d+\.\d+\.\d+)`,
-			FromPage:  true,
-			Index:     1,
+			Regex:    `(\d+\.\d+\.\d+)`,
+			FromPage: true,
+			Index:    1,
 		},
 	}
 	got, err := s.extractVersion("https://example.com/x.zip", page)
