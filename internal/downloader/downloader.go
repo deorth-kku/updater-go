@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 // Downloader is the interface for file downloads.
 type Downloader interface {
-	Download(ctx context.Context, url, filename, saveDir string) (localPath, gid string, err error)
+	Download(ctx context.Context, url, filename, saveDir string, headers map[string]string) (localPath, gid string, err error)
 	Remove(gid string) error
 	Close() error
 }
@@ -30,7 +31,9 @@ type Aria2Downloader struct {
 	client    *aria2.Client
 	remoteDir string
 	localDir  string
-	useWS     bool // true if addr is ws:// or wss://
+	proxy     string // global HTTP proxy (from main config requests.proxy)
+	retry     int    // aria2 retry count (from main config requests.retry)
+	useWS     bool   // true if addr is ws:// or wss://
 	sub       *subscriber
 	logger    *slog.Logger
 }
@@ -109,8 +112,9 @@ func (s *subscriber) subscribe(gid string) chan event {
 	return ch
 }
 
-// NewAria2Downloader creates a new aria2 downloader.
-func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir string, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, error) {
+// NewAria2Downloader creates a new aria2 downloader. proxy and retry mirror
+// updater-rpc's requests.proxy and requests.retry, forwarded to aria2.
+func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir, proxy string, retry int, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("parse aria2 addr %s: %w", addr, err)
@@ -144,14 +148,47 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir s
 		client:    client,
 		remoteDir: remoteDir,
 		localDir:  localDir,
+		proxy:     proxy,
+		retry:     retry,
 		useWS:     useWS,
 		sub:       sub,
 		logger:    logger,
 	}, nil
 }
 
-// Download adds a URI to aria2 and waits for completion.
-func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir string) (string, string, error) {
+// buildAria2Options assembles the aria2 AddURI options, mirroring
+// updater-rpc's global aria2 args plus the per-project headers (gap #5).
+func (d *Aria2Downloader) buildAria2Options(aria2Dir, filename string, headers map[string]string) map[string]string {
+	opts := map[string]string{
+		"dir":                      aria2Dir,
+		"out":                      filename,
+		"split":                    "16",
+		"max-connection-per-server": "16",
+		"continue":                 "true",
+	}
+	if d.proxy != "" {
+		opts["proxy"] = d.proxy
+	}
+	if d.retry > 0 {
+		opts["retry"] = strconv.Itoa(d.retry)
+	}
+	if len(headers) > 0 {
+		var headerList []string
+		for k, v := range headers {
+			headerList = append(headerList, fmt.Sprintf("%s: %s", k, v))
+		}
+		// aria2's "header" option is a multi-valued option expressed as a
+		// newline-separated string in the options map.
+		opts["header"] = strings.Join(headerList, "\n")
+	}
+	return opts
+}
+
+// Download adds a URI to aria2 and waits for completion. headers are
+// per-project custom HTTP headers (basic.headers) forwarded to aria2 via the
+// "header" option. Proxy, split, max-connection and continue mirror
+// updater-rpc's aria2 global options (gap #5).
+func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir string, headers map[string]string) (string, string, error) {
 	var aria2Dir string
 	if d.remoteDir == "" || d.localDir == "" {
 		aria2Dir = saveDir
@@ -167,10 +204,9 @@ func (d *Aria2Downloader) Download(ctx context.Context, dlURL, filename, saveDir
 		"result", aria2Dir,
 	)
 
-	opts := map[string]string{
-		"dir": aria2Dir,
-		"out": filename,
-	}
+	// Build aria2 options. split/max-connection/continue mirror updater-rpc's
+	// global aria2 args (split=16, max-connection-per-server=16, continue=true).
+	opts := d.buildAria2Options(aria2Dir, filename, headers)
 
 	gid, err := d.client.AddURI(ctx, []string{dlURL}, opts, nil)
 	if err != nil {

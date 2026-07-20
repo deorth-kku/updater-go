@@ -127,7 +127,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	var aria2DL downloader.Downloader
 	var localAria2 *downloader.LocalAria2
-	aria2DL, localAria2, err = downloader.NewAria2DownloaderOrLocal(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir, cfg.Binaries.Aria2c, dlLogger, cfg.Requests.GetTimeout())
+	aria2DL, localAria2, err = downloader.NewAria2DownloaderOrLocal(ctx, addr, cfg.Aria2.RPCSecret, cfg.Aria2.RemoteDir, cfg.Aria2.LocalDir, cfg.Binaries.Aria2c, cfg.Requests.Proxy, cfg.Requests.Retry, dlLogger, cfg.Requests.GetTimeout())
 	if err != nil {
 		logger.Warn("aria2 connection failed", "error", err)
 		return err

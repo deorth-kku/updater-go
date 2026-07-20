@@ -222,7 +222,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		"reason", "download URL and filename resolved",
 		"result", "begin",
 	)
-	localPath, _, err := u.dl.Download(ctx, dlURL, filename, saveDir)
+	localPath, _, err := u.dl.Download(ctx, dlURL, filename, saveDir, u.projectCfg.Basic.Headers)
 	if err != nil {
 		result.Error = fmt.Errorf("download: %w", err)
 		return result

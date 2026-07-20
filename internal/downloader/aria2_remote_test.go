@@ -78,6 +78,8 @@ func TestRemoteAria2Download(t *testing.T) {
 		secret,
 		remoteDir,
 		localDir,
+		"",
+		5,
 		logger,
 		30*time.Second,
 	)
@@ -88,7 +90,7 @@ func TestRemoteAria2Download(t *testing.T) {
 
 	// --- Download ---
 	filename := "testfile.zip"
-	localPath, gid, err := downloader.Download(context.Background(), dlURL, filename, remoteDir+"/proj")
+	localPath, gid, err := downloader.Download(context.Background(), dlURL, filename, remoteDir+"/proj", nil)
 	if err != nil {
 		t.Fatalf("download failed: %v", err)
 	}

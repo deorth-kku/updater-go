@@ -139,8 +139,8 @@ func generateSecret() string {
 	return strings.ToLower(string(b))
 }
 
-func NewAria2DownloaderOrLocal(ctx context.Context, addr, secret, remoteDir, localDir, binPath string, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, *LocalAria2, error) {
-	rpc, err := NewAria2Downloader(ctx, addr, secret, remoteDir, localDir, logger, timeout)
+func NewAria2DownloaderOrLocal(ctx context.Context, addr, secret, remoteDir, localDir, binPath, proxy string, retry int, logger *slog.Logger, timeout time.Duration) (*Aria2Downloader, *LocalAria2, error) {
+	rpc, err := NewAria2Downloader(ctx, addr, secret, remoteDir, localDir, proxy, retry, logger, timeout)
 	if err != nil {
 		logger.Warn("aria2 RPC connection failed, trying local subprocess",
 			"addr", addr,
@@ -169,7 +169,7 @@ try_local:
 	local, newsecret, localerr := StartLocalAria2(ctx, addr, secret, binPath, logger)
 	switch localerr {
 	case nil:
-		rpc, err = NewAria2Downloader(ctx, addr, newsecret, remoteDir, localDir, logger, timeout)
+		rpc, err = NewAria2Downloader(ctx, addr, newsecret, remoteDir, localDir, proxy, retry, logger, timeout)
 		if err != nil {
 			local.Stop()
 			return nil, nil, err

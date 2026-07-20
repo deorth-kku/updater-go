@@ -16,7 +16,7 @@ import (
 // mockDownloader implements downloader.Downloader for testing.
 type mockDownloader struct{}
 
-func (m *mockDownloader) Download(_ context.Context, _ string, filename, saveDir string) (string, string, error) {
+func (m *mockDownloader) Download(_ context.Context, _ string, filename, saveDir string, _ map[string]string) (string, string, error) {
 	localPath := filepath.Join(saveDir, filename)
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return "", "", err
