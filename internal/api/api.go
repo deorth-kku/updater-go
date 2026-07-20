@@ -61,7 +61,7 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 			"reason", "config api_type is sourceforge",
 			"result", "sourceforge",
 		)
-		return NewSourceforgeAPI(cfg, dl, logger), nil
+		return NewSourceforgeAPI(cfg, dlCfg, dl, logger), nil
 	case "simplespider":
 		logger.Info("api backend selected",
 			"project", cfg.ProjectName,

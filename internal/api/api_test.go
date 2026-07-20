@@ -155,7 +155,7 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, mdl, slog.Default())
+	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, config.DownloadConfig{Filetype: config.StringOrSlice{"exe"}}, mdl, slog.Default())
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
