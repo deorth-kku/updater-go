@@ -444,29 +444,14 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 			"result", strings.Join(matched, ","),
 		)
 		// Apply index/indexes filtering
-		if len(u.projectCfg.Download.Indexes) > 0 {
-			var indexed []string
-			for _, idx := range u.projectCfg.Download.Indexes {
-				if idx >= 0 && idx < len(matched) {
-					indexed = append(indexed, matched[idx])
-				}
-			}
-			matched = indexed
-			u.log().Debug("indexes applied",
-				"project", u.projectCfg.Basic.ProjectName,
-				"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
-				"reason", "download.indexes configured",
-				"result", strings.Join(matched, ","),
-			)
-		} else if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index <= len(matched) {
-			matched = matched[u.projectCfg.Download.Index-1:]
-			u.log().Debug("index applied",
-				"project", u.projectCfg.Basic.ProjectName,
-				"index", u.projectCfg.Download.Index,
-				"reason", "single download.index configured",
-				"result", strings.Join(matched, ","),
-			)
-		}
+		matched = u.applyIndex(matched)
+		u.log().Debug("index applied",
+			"project", u.projectCfg.Basic.ProjectName,
+			"index", u.projectCfg.Download.Index,
+			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
+			"reason", "matched assets filtered by download.index/indexes",
+			"result", strings.Join(matched, ","),
+		)
 		for _, name := range matched {
 			for _, a := range rel.Assets {
 				if a.Name == name {
@@ -493,29 +478,14 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 			"reason", "file selector filtered appveyor artifacts",
 			"result", strings.Join(matched, ","),
 		)
-		if len(u.projectCfg.Download.Indexes) > 0 {
-			var indexed []string
-			for _, idx := range u.projectCfg.Download.Indexes {
-				if idx >= 0 && idx < len(matched) {
-					indexed = append(indexed, matched[idx])
-				}
-			}
-			matched = indexed
-			u.log().Debug("indexes applied",
-				"project", u.projectCfg.Basic.ProjectName,
-				"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
-				"reason", "download.indexes configured",
-				"result", strings.Join(matched, ","),
-			)
-		} else if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index <= len(matched) {
-			matched = matched[u.projectCfg.Download.Index-1:]
-			u.log().Debug("index applied",
-				"project", u.projectCfg.Basic.ProjectName,
-				"index", u.projectCfg.Download.Index,
-				"reason", "single download.index configured",
-				"result", strings.Join(matched, ","),
-			)
-		}
+		matched = u.applyIndex(matched)
+		u.log().Debug("index applied",
+			"project", u.projectCfg.Basic.ProjectName,
+			"index", u.projectCfg.Download.Index,
+			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
+			"reason", "matched artifacts filtered by download.index/indexes",
+			"result", strings.Join(matched, ","),
+		)
 		for _, name := range matched {
 			for _, art := range rel.Artifacts {
 				if art.FileName == name {
@@ -557,6 +527,31 @@ func assetNames(assets []api.Asset) []string {
 		names[i] = a.Name
 	}
 	return names
+}
+
+// applyIndex narrows a list of matched filenames to the element(s) selected by
+// the download.index / download.indexes config, mirroring updater-rpc's
+// getDlUrl behaviour for github/appveyor backends.
+//
+// When download.indexes is set, each entry selects one filename (0-based).
+// Otherwise, when download.index is set, only the single filename at that
+// 0-based position is returned (Python returns match_urls[index] — a single
+// element, not a slice from that position onward).
+func (u *Updater) applyIndex(matched []string) []string {
+	if len(u.projectCfg.Download.Indexes) > 0 {
+		var indexed []string
+		for _, idx := range u.projectCfg.Download.Indexes {
+			if idx >= 0 && idx < len(matched) {
+				indexed = append(indexed, matched[idx])
+			}
+		}
+		return indexed
+	}
+	if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index < len(matched) {
+		// Python is 0-based: match_urls[index]. Return exactly that element.
+		return matched[u.projectCfg.Download.Index : u.projectCfg.Download.Index+1]
+	}
+	return matched
 }
 
 // artifactNames returns the file names of all artifacts.

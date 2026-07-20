@@ -45,6 +45,38 @@ func (m *mockHTTPDownloader) Get(_ context.Context, url string) (*api.HTTPRespon
 	return &api.HTTPResponse{StatusCode: 200, Body: body}, nil
 }
 
+func TestApplyIndex_ZeroBasedSingle(t *testing.T) {
+	cases := []struct {
+		name    string
+		matched []string
+		index   int
+		indexes []int
+		want    []string
+	}{
+		{"default no index", []string{"a", "b", "c"}, 0, nil, []string{"a", "b", "c"}},
+		{"index 1 (python match_urls[1])", []string{"a", "b", "c"}, 1, nil, []string{"b"}},
+		{"index 2", []string{"a", "b", "c"}, 2, nil, []string{"c"}},
+		{"index out of range", []string{"a", "b"}, 5, nil, []string{"a", "b"}},
+		{"indexes plural", []string{"a", "b", "c"}, 0, []int{0, 2}, []string{"a", "c"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			u := &Updater{projectCfg: config.ProjectConfig{
+				Download: config.DownloadConfig{Index: c.index, Indexes: c.indexes},
+			}}
+			got := u.applyIndex(c.matched)
+			if len(got) != len(c.want) {
+				t.Fatalf("applyIndex() len = %d, want %d (%v)", len(got), len(c.want), got)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("applyIndex()[%d] = %q, want %q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestUpdate_FullFlow(t *testing.T) {
 	projCfg := config.ProjectConfig{
 		Basic: config.BasicConfig{
@@ -291,9 +323,9 @@ func TestSelectDownloadURL_Index(t *testing.T) {
 	u := &Updater{projectCfg: projCfg}
 	result := u.selectDownloadURL(rel)
 
-	// Index 2 means second match (1-based)
-	if result != "http://example.com/second.7z" {
-		t.Errorf("selectDownloadURL() = %q, want %q", result, "http://example.com/second.7z")
+	// Index 2 is 0-based per updater-rpc: match_urls[2] -> third asset
+	if result != "http://example.com/third.7z" {
+		t.Errorf("selectDownloadURL() = %q, want %q", result, "http://example.com/third.7z")
 	}
 }
 
