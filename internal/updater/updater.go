@@ -15,6 +15,7 @@ import (
 	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/deorth-kku/updater-go/internal/downloader"
 	"github.com/deorth-kku/updater-go/internal/extractor"
+	"github.com/deorth-kku/updater-go/internal/peversion"
 	"github.com/deorth-kku/updater-go/internal/platform"
 	"github.com/deorth-kku/updater-go/internal/process"
 )
@@ -69,6 +70,49 @@ func replaceVars(s, path, name, dlFilename, version string) string {
 	return s
 }
 
+// exePath resolves the installed executable path used for use_exe_version.
+func (u *Updater) exePath() string {
+	image := u.projectCfg.Process.ImageName
+	if image == "" {
+		image = u.projectCfg.Basic.ProjectName
+	}
+	p := filepath.Join(u.entry.SavePath, image)
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(p), ".exe") {
+		p += ".exe"
+	}
+	return p
+}
+
+// needUpdateByExe implements updater-rpc's use_exe_version comparison. It
+// returns (true, reason) when an update should proceed. When the exe is
+// missing it is treated as a fresh install (always update). When the exe has
+// no version resource we also update (mirrors the Python install-mode branch).
+func (u *Updater) needUpdateByExe(remote string) (bool, string) {
+	exepath := u.exePath()
+	if _, err := os.Stat(exepath); err != nil {
+		return true, "installed exe missing, treat as install"
+	}
+	fileVer, prodVer, err := peversion.FileVersion(exepath)
+	if err != nil {
+		u.log().Warn("read exe version failed",
+			"project", u.projectCfg.Basic.ProjectName,
+			"path", exepath,
+			"error", err,
+			"reason", "fall back to install mode",
+			"result", "warn",
+		)
+		return true, "failed to read exe version, treat as install"
+	}
+	// Mirrors Python: no VS_FIXEDFILEINFO -> install mode (always update).
+	if fileVer == (peversion.Version{}) && prodVer == (peversion.Version{}) {
+		return true, "installed exe has no version resource, treat as install"
+	}
+	if !peversion.NeedsUpdate(remote, fileVer, prodVer) {
+		return false, "remote version not newer than installed exe FileVersion/ProductVersion"
+	}
+	return true, "remote version newer than installed exe FileVersion/ProductVersion"
+}
+
 // Update runs the full update flow for the project.
 func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: u.entry.Version}
@@ -99,24 +143,66 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		"result", rel.Version,
 	)
 
-	// Step 2: Check if update is needed
-	if !u.force && rel.Version == result.OldVersion {
-		u.log().Info("no update needed",
+	// Step 2: Check if update is needed.
+	//
+	// Mirrors updater-rpc's `run`: the decision is `checkIfUpdateIsNeed(...)
+	// or force`. So force takes precedence over everything: when set we
+	// always proceed regardless of version. Only when force is off do we
+	// fall into the version-specific checks.
+	if u.force {
+		u.log().Info("update needed",
 			"project", result.ProjectName,
-			"version", rel.Version,
-			"reason", "detected version equals installed version and force is off",
-			"result", "skip",
+			"old_version", result.OldVersion,
+			"new_version", rel.Version,
+			"force", u.force,
+			"reason", "force enabled",
+			"result", "proceed",
 		)
-		return result
+	} else if u.projectCfg.Version.UseExeVersion {
+		// use_exe_version: instead of comparing against the recorded
+		// currentVersion, read the binary FileVersion / ProductVersion
+		// straight from the installed exe (Windows PE only). This mirrors
+		// updater-rpc's checkIfUpdateIsNeed: if the exe is missing we treat
+		// it as a fresh install; otherwise an update is needed only when the
+		// remote version is strictly greater than BOTH the installed
+		// FileVersion and ProductVersion.
+		need, reason := u.needUpdateByExe(rel.Version)
+		if !need {
+			u.log().Info("no update needed",
+				"project", result.ProjectName,
+				"version", rel.Version,
+				"reason", reason,
+				"result", "skip",
+			)
+			return result
+		}
+		u.log().Info("update needed",
+			"project", result.ProjectName,
+			"old_version", result.OldVersion,
+			"new_version", rel.Version,
+			"force", u.force,
+			"reason", reason,
+			"result", "proceed",
+		)
+	} else { // generic comparison
+		if rel.Version == result.OldVersion {
+			u.log().Info("no update needed",
+				"project", result.ProjectName,
+				"version", rel.Version,
+				"reason", "detected version equals installed version and force is off",
+				"result", "skip",
+			)
+			return result
+		}
+		u.log().Info("update needed",
+			"project", result.ProjectName,
+			"old_version", result.OldVersion,
+			"new_version", rel.Version,
+			"force", u.force,
+			"reason", "detected version differs from installed",
+			"result", "proceed",
+		)
 	}
-	u.log().Info("update needed",
-		"project", result.ProjectName,
-		"old_version", result.OldVersion,
-		"new_version", rel.Version,
-		"force", u.force,
-		"reason", "force enabled or detected version differs from installed",
-		"result", "proceed",
-	)
 
 	// Step 3: Select download URL
 	dlURL := u.selectDownloadURL(rel)
