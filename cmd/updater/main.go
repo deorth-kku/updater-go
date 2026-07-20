@@ -141,7 +141,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create HTTP downloader for metadata
-	httpDL := api.NewHTTPClientWithProxy(cfg.Requests.GetTimeout(), cfg.Requests.Proxy)
+	httpDL := api.NewHTTPClientWithProxy(cfg.Requests.GetTimeout(), cfg.Requests.Proxy, cfg.Requests.Retry)
 
 	// Load metadata from repositories
 	var metaStore *metadata.Store
