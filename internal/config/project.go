@@ -141,6 +141,7 @@ type ProcessConfig struct {
 	RestartWait  int    `json:"restart_wait,omitzero"`
 	StopCmd      string `json:"stop_cmd,omitzero"`
 	StartCmd     string `json:"start_cmd,omitzero"`
+	Popup        bool   `json:"popup,omitzero"` // show Windows popup when waiting for process to stop
 }
 
 // BuildConfig controls build/source-fetch behavior.

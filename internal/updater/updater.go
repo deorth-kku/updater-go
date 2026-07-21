@@ -240,19 +240,22 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	// `elif popup` branch: if the target process is still running, log a
 	// warning and wait for it to exit before extracting, so we don't extract
 	// over a running/locked file.
-	if !u.projectCfg.Process.AllowRestart {
+	if !u.projectCfg.Process.AllowRestart && u.projectCfg.Process.Popup {
 		imageName := u.projectCfg.Process.ImageName
 		if imageName == "" {
 			imageName = result.ProjectName
 		}
 		ctrl := process.New(imageName, u.log().With("comp", "process"))
 		if ctrl.IsRunning() {
-			u.log().Warn("waiting for process to stop before extracting",
-				"project", result.ProjectName,
-				"image", imageName,
-				"reason", "allow_restart is false and process is running",
-				"result", "wait",
-			)
+			msg := fmt.Sprintf("waiting for process %s to stop so we can update %s",
+				imageName, result.ProjectName)
+			u.log().Warn(msg)
+			if err := ctrl.PopupMsg("Updater", msg); err != nil {
+				u.log().Warn("popup message failed",
+					"project", result.ProjectName,
+					"error", err,
+				)
+			}
 			if err := ctrl.WaitForStop(ctx, 5*time.Minute); err != nil {
 				u.log().Warn("timed out waiting for process to stop",
 					"project", result.ProjectName,

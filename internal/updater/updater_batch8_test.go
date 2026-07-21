@@ -222,6 +222,7 @@ func TestUpdate_WaitForProcessExit(t *testing.T) {
 		Process: config.ProcessConfig{
 			ImageName:    "sleeper",
 			AllowRestart: false,
+			Popup:        true,
 		},
 	}
 	u := New(projCfg, config.ProjectEntry{SavePath: saveDir}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)

@@ -3,4 +3,6 @@
 package process
 
 // PopupMsg is a no-op on non-Windows platforms.
-func (c *Controller) PopupMsg(title, msg string) {}
+func (c *Controller) PopupMsg(title, msg string) error {
+	return nil
+}
