@@ -138,6 +138,7 @@ func readPIDFile(f *os.File) (int, error) {
 	if err != nil && err != io.EOF {
 		return 0, err
 	}
+	err = nil
 	s := strings.TrimSpace(string(buf[:n]))
 	if s == "" {
 		return 0, err
