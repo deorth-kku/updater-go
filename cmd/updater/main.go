@@ -17,6 +17,7 @@ import (
 	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/deorth-kku/updater-go/internal/downloader"
+	"github.com/deorth-kku/updater-go/internal/instance"
 	"github.com/deorth-kku/updater-go/internal/metadata"
 	"github.com/deorth-kku/updater-go/internal/updater"
 	"github.com/spf13/cobra"
@@ -69,6 +70,21 @@ func run(cmd *cobra.Command, args []string) error {
 		"result", logLevel.String(),
 	)
 
+	// Acquire single-instance lock
+	lock, err := instance.New("")
+	if err != nil {
+		logger.Error("another instance is running", "error", err)
+		return err
+	}
+	defer lock.Close()
+	logger.Info("instance lock acquired",
+		"pid", lock.PID(),
+		"path", lock.Path(),
+		"stale", lock.IsStale(),
+		"reason", "single-instance lock to prevent concurrent updates",
+		"result", "ok",
+	)
+
 	// Resolve config path
 	configPath := resolveConfigPath()
 	logger.Info("config path resolved",
@@ -77,7 +93,7 @@ func run(cmd *cobra.Command, args []string) error {
 		"result", configPath,
 	)
 	var cfg *config.Config
-	_, err := os.Stat(configPath)
+	_, err = os.Stat(configPath)
 	if err != nil {
 		logger.Warn("config not found, using defaults",
 			"path", configPath,
