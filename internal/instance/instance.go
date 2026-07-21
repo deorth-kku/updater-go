@@ -10,9 +10,12 @@ package instance
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -43,7 +46,7 @@ func lockDir() string {
 			return filepath.Join(home, "AppData", "Local", "Temp")
 		}
 	}
-	return "/tmp"
+	return os.TempDir()
 }
 
 // New creates and acquires a single-instance lock. If another updater instance
@@ -124,3 +127,36 @@ func (l *Lock) IsStale() bool { return l.stale }
 
 // Path returns the absolute path of the lock file.
 func (l *Lock) Path() string { return l.path }
+
+// readPIDFile reads the first line of the lock file as a PID.
+func readPIDFile(f *os.File) (int, error) {
+	if _, err := f.Seek(0, 0); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, 32)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
+	s := strings.TrimSpace(string(buf[:n]))
+	if s == "" {
+		return 0, err
+	}
+	p, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	return p, nil
+}
+
+// writePIDFile writes the PID to the lock file.
+func writePIDFile(f *os.File, pid int) error {
+	if _, err := f.Seek(0, 0); err != nil {
+		return err
+	}
+	if err := f.Truncate(0); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(f, "%d", pid)
+	return err
+}
