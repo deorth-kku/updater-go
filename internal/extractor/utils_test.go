@@ -188,6 +188,146 @@ func TestCopyDir_SourceNotFound(t *testing.T) {
 	}
 }
 
+func TestCopyDir_SymlinkRelative(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create a target file and a relative symlink to it
+	targetFile := filepath.Join(srcDir, "target.txt")
+	if err := os.WriteFile(targetFile, []byte("target-content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlinkPath := filepath.Join(srcDir, "link.txt")
+	if err := os.Symlink("target.txt", symlinkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also test a nested relative symlink
+	os.MkdirAll(filepath.Join(srcDir, "sub"), 0o755)
+	nestedTarget := filepath.Join(srcDir, "sub", "nested.txt")
+	if err := os.WriteFile(nestedTarget, []byte("nested-content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nestedLink := filepath.Join(srcDir, "sub", "nested-link.txt")
+	if err := os.Symlink("../target.txt", nestedLink); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	// Verify relative symlink is preserved (not resolved)
+	linkDst := filepath.Join(dstDir, "link.txt")
+	info, err := os.Lstat(linkDst)
+	if err != nil {
+		t.Fatalf("Lstat link.txt: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("link.txt should be a symlink, got regular file")
+	}
+	target, err := os.Readlink(linkDst)
+	if err != nil {
+		t.Fatalf("Readlink link.txt: %v", err)
+	}
+	if target != "target.txt" {
+		t.Errorf("link.txt target = %q, want %q", target, "target.txt")
+	}
+
+	// Verify nested relative symlink is preserved
+	nestedLinkDst := filepath.Join(dstDir, "sub", "nested-link.txt")
+	info, err = os.Lstat(nestedLinkDst)
+	if err != nil {
+		t.Fatalf("Lstat nested-link.txt: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("nested-link.txt should be a symlink, got regular file")
+	}
+	target, err = os.Readlink(nestedLinkDst)
+	if err != nil {
+		t.Fatalf("Readlink nested-link.txt: %v", err)
+	}
+	if target != "../target.txt" {
+		t.Errorf("nested-link.txt target = %q, want %q", target, "../target.txt")
+	}
+}
+
+func TestCopyDir_SymlinkAbsolute(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Create a target file and an absolute symlink to it
+	targetFile := filepath.Join(srcDir, "target.txt")
+	if err := os.WriteFile(targetFile, []byte("target-content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	absTarget, _ := filepath.Abs(targetFile)
+	symlinkPath := filepath.Join(srcDir, "abs-link.txt")
+	if err := os.Symlink(absTarget, symlinkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	// Verify absolute symlink is preserved as-is
+	linkDst := filepath.Join(dstDir, "abs-link.txt")
+	info, err := os.Lstat(linkDst)
+	if err != nil {
+		t.Fatalf("Lstat abs-link.txt: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("abs-link.txt should be a symlink, got regular file")
+	}
+	target, err := os.Readlink(linkDst)
+	if err != nil {
+		t.Fatalf("Readlink abs-link.txt: %v", err)
+	}
+	if target != absTarget {
+		t.Errorf("abs-link.txt target = %q, want %q", target, absTarget)
+	}
+}
+
+func TestCopyDir_SymlinkAndRegularFile(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Mix of regular file, directory, and symlinks
+	os.MkdirAll(filepath.Join(srcDir, "sub"), 0o755)
+	os.WriteFile(filepath.Join(srcDir, "regular.txt"), []byte("regular"), 0o644)
+	os.WriteFile(filepath.Join(srcDir, "sub", "data.txt"), []byte("data"), 0o644)
+	os.Symlink("regular.txt", filepath.Join(srcDir, "rel-link.txt"))
+	absTarget, _ := filepath.Abs(filepath.Join(srcDir, "regular.txt"))
+	os.Symlink(absTarget, filepath.Join(srcDir, "abs-link.txt"))
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	// Verify regular file is copied as regular file
+	regularInfo, _ := os.Lstat(filepath.Join(dstDir, "regular.txt"))
+	if regularInfo.Mode()&os.ModeSymlink != 0 {
+		t.Error("regular.txt should NOT be a symlink")
+	}
+	content, _ := os.ReadFile(filepath.Join(dstDir, "regular.txt"))
+	if string(content) != "regular" {
+		t.Errorf("regular.txt content = %q, want %q", content, "regular")
+	}
+
+	// Verify relative symlink
+	relLinkInfo, _ := os.Lstat(filepath.Join(dstDir, "rel-link.txt"))
+	if relLinkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Error("rel-link.txt should be a symlink")
+	}
+
+	// Verify absolute symlink
+	absLinkInfo, _ := os.Lstat(filepath.Join(dstDir, "abs-link.txt"))
+	if absLinkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Error("abs-link.txt should be a symlink")
+	}
+}
+
 // --- prefixSkipper / mergeSkipper tests ---
 
 type mockSkipper struct {
