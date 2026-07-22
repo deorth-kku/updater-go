@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -183,22 +182,6 @@ func splitCmdline(b []byte) []string {
 	return parts
 }
 
-func (c *Controller) stopService(ctx context.Context) error {
-	switch runtime.GOOS {
-	case "windows":
-		// updater-rpc uses `net <command> <service>` on Windows (gap #21).
-		cmd := exec.CommandContext(ctx, "net", "stop", c.imageName)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run()
-	default:
-		cmd := exec.CommandContext(ctx, "systemctl", "stop", c.imageName)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run()
-	}
-}
-
 func (c *Controller) runCustomCmd(ctx context.Context, cmdStr string) error {
 	// Split the command string into args (simple space-split, no shell expansion)
 	parts := strings.Fields(cmdStr)
@@ -242,39 +225,11 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 		return c.startService(ctx)
 	}
 
-	// Non-service restart: if we recorded the original (cmdline, cwd) of the
-	// killed processes during stop (gap #22), relaunch them verbatim with
-	// their original working directory. This preserves arguments/cwd that a
-	// plain path-based launch would lose.
-	if len(c.stored) > 0 && runtime.GOOS != "windows" {
-		var firstErr error
-		for _, pl := range c.stored {
-			if len(pl.cmdline) == 0 {
-				continue
-			}
-			c.log().Info("process start strategy",
-				"image", c.imageName,
-				"cmdline", strings.Join(pl.cmdline, " "),
-				"cwd", pl.cwd,
-				"reason", "relaunch recorded process with original cmdline/cwd (gap #22)",
-				"result", "start recorded",
-			)
-			cmd := exec.CommandContext(ctx, pl.cmdline[0], pl.cmdline[1:]...)
-			cmd.Stdout = nil
-			cmd.Stderr = nil
-			if pl.cwd != "" {
-				cmd.Dir = pl.cwd
-			}
-			if err := cmd.Start(); err != nil {
-				c.log().Warn("relaunch recorded process failed",
-					"image", c.imageName, "error", err)
-				if firstErr == nil {
-					firstErr = err
-				}
-			}
-		}
-		c.stored = nil
-		return firstErr
+	// Non-service restart: relaunch recorded processes with original cmdline/cwd (gap #22).
+	if relaunched, err := c.relaunch(ctx); err != nil {
+		return err
+	} else if relaunched {
+		return nil
 	}
 
 	// Launch by path (image_name is used for identification, path is the executable)
@@ -293,35 +248,45 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 		"reason", "no start_cmd and no service, launch executable by path",
 		"result", "start binary",
 	)
-	switch runtime.GOOS {
-	case "windows":
-		cmd := exec.CommandContext(ctx, path)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Start()
-	default:
-		cmd := exec.CommandContext(ctx, path)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Start()
-	}
+	cmd := exec.CommandContext(ctx, path)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Start()
 }
 
-// StartService starts a system service.
-func (c *Controller) startService(ctx context.Context) error {
-	switch runtime.GOOS {
-	case "windows":
-		// updater-rpc uses `net <command> <service>` on Windows (gap #21).
-		cmd := exec.CommandContext(ctx, "net", "start", c.imageName)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run()
-	default:
-		cmd := exec.CommandContext(ctx, "systemctl", "start", c.imageName)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run()
+// relaunch restarts stored processes with their original cmdline and cwd (gap #22).
+func (c *Controller) relaunch(ctx context.Context) (bool, error) {
+	if len(c.stored) == 0 {
+		return false, nil
 	}
+	var firstErr error
+	for _, pl := range c.stored {
+		if len(pl.cmdline) == 0 {
+			continue
+		}
+		c.log().Info("process start strategy",
+			"image", c.imageName,
+			"cmdline", fmt.Sprintf("%v", pl.cmdline),
+			"cwd", pl.cwd,
+			"reason", "relaunch recorded process with original cmdline/cwd (gap #22)",
+			"result", "start recorded",
+		)
+		cmd := exec.CommandContext(ctx, pl.cmdline[0], pl.cmdline[1:]...)
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		if pl.cwd != "" {
+			cmd.Dir = pl.cwd
+		}
+		if err := cmd.Start(); err != nil {
+			c.log().Warn("relaunch recorded process failed",
+				"image", c.imageName, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	c.stored = nil
+	return true, firstErr
 }
 
 // WaitForStop waits for the process to actually terminate.

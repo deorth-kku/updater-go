@@ -3,6 +3,7 @@ module github.com/deorth-kku/updater-go
 go 1.26
 
 require (
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/deorth-kku/aria2rpc-go v0.0.0
 	github.com/filecoin-project/go-jsonrpc v0.10.1
 	github.com/mholt/archives v0.1.5
@@ -25,6 +26,7 @@ require (
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
