@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -31,6 +33,8 @@ var (
 	flagWait     bool
 	flagJobs     int
 	flagVerbose  bool
+	flagLogFile  string
+	flagLogLevel string
 	flagPath     string
 )
 
@@ -47,7 +51,8 @@ func main() {
 	rootCmd.Flags().BoolVarP(&flagAdd2Conf, "add2conf", "a", false, "persist added project to config")
 	rootCmd.Flags().BoolVarP(&flagWait, "wait", "w", false, "pause before exit (Windows convenience)")
 	rootCmd.Flags().IntVarP(&flagJobs, "jobs", "j", 0, "max parallel update workers (default: GOMAXPROCS)")
-	rootCmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "enable debug logging")
+	rootCmd.Flags().StringVarP(&flagLogFile, "log-file", "", "stderr", "log file path, 'stderr' for standard error")
+	rootCmd.Flags().StringVarP(&flagLogLevel, "log-level", "", "INFO", "log level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "install path for added project (e.g. --path /opt/tools)")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -56,17 +61,30 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	// Setup logging
-	logLevel := slog.LevelInfo
-	if flagVerbose {
-		logLevel = slog.LevelDebug
+	// Parse log level
+	logLevel := parseLogLevel(flagLogLevel)
+
+	// Resolve log writer: file or stderr
+	var logWriter io.Writer = os.Stderr
+	if flagLogFile != "" && flagLogFile != "stderr" {
+		logDir := filepath.Dir(flagLogFile)
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			return fmt.Errorf("create log directory: %w", err)
+		}
+		f, err := os.OpenFile(flagLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return fmt.Errorf("open log file: %w", err)
+		}
+		defer f.Close()
+		logWriter = f
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
 	logger.Info("logging initialized",
 		"level", logLevel.String(),
-		"verbose", flagVerbose,
-		"reason", "log level selected from --verbose flag",
+		"log_file", flagLogFile,
+		"reason", "log level and output selected",
 		"result", logLevel.String(),
 	)
 
@@ -360,6 +378,23 @@ func resolveConfigPath() string {
 		defaultPath = filepath.Join(home, ".config", "updater-rpc", "config.json")
 	}
 	return defaultPath
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch strings.ToUpper(level) {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "INFO":
+		return slog.LevelInfo
+	case "WARNING":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	case "CRITICAL":
+		return slog.Level(50)
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func loadProjectConfig(configRoot, name string, defaults json.RawMessage) (*config.ProjectConfig, error) {
