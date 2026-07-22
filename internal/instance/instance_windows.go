@@ -3,44 +3,40 @@
 package instance
 
 import (
-	"os"
+	"fmt"
+	"path/filepath"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
-// platformFlock acquires an exclusive non-blocking file lock using LockFileEx.
-func platformFlock(f *os.File) error {
-	var ol windows.Overlapped
-	return windows.LockFileEx(
-		windows.Handle(f.Fd()),
-		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
-		0,
-		1, // lock 1 byte
-		0,
-		&ol,
-	)
+type windowsLock struct {
+	path string
+	h    windows.Handle
 }
 
-// platformUnlock releases the file lock.
-func platformUnlock(f *os.File) error {
-	var ol windows.Overlapped
-	return windows.LockFileEx(
-		windows.Handle(f.Fd()),
-		0,
-		0,
-		1,
-		0,
-		&ol,
-	)
-}
-
-// isProcessAlive checks whether a process with the given PID is still running
-// by attempting to open it with PROCESS_QUERY_INFORMATION access.
-func isProcessAlive(pid int) bool {
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false
+func new(path string) (Lock, error) {
+	if path == "" {
+		path = lockFileName
 	}
-	windows.CloseHandle(h)
-	return true
+	name := filepath.Join("Global", path)
+	pw, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return nil, fmt.Errorf("instance: UTF16PtrFromString: %w", err)
+	}
+	h, err := windows.CreateMutex(nil, false, pw)
+	if err != nil {
+		return nil, fmt.Errorf("instance: CreateMutexW: %w", err)
+	}
+	if err := windows.GetLastError(); err == windows.ERROR_ALREADY_EXISTS {
+		windows.CloseHandle(h)
+		return nil, fmt.Errorf("instance: another updater is running (mutex=%s)", name)
+	}
+	return &windowsLock{path: path, h: h}, nil
 }
+
+func (w *windowsLock) Close() error {
+	return windows.CloseHandle(w.h)
+}
+
+func (w *windowsLock) Path() string { return w.path }

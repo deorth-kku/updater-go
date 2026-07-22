@@ -3,22 +3,43 @@
 package instance
 
 import (
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
-// platformFlock acquires an exclusive non-blocking file lock using flock(2).
-func platformFlock(f *os.File) error {
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+type unixLock struct {
+	f *os.File
 }
 
-// platformUnlock releases the file lock.
-func platformUnlock(f *os.File) error {
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+func new(path string) (Lock, error) {
+	if path == "" {
+		path = filepath.Join(os.TempDir(), lockFileName)
+	}
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("instance: mkdir %s: %w", dir, err)
+		}
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("instance: open lock file %s: %w", path, err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("instance: flock lock: %w", err)
+	}
+	return unixLock{f: f}, nil
 }
 
-// isProcessAlive checks whether a process with the given PID is still running
-// by sending signal 0 (no-op signal) via syscall.Kill.
-func isProcessAlive(pid int) bool {
-	return syscall.Kill(pid, 0) == nil
+func (u unixLock) Close() error {
+	err := syscall.Flock(int(u.f.Fd()), syscall.LOCK_UN)
+	ferr := u.f.Close()
+	rerr := os.Remove(u.Path())
+	return errors.Join(err, ferr, rerr)
 }
+
+func (u unixLock) Path() string { return u.f.Name() }

@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"testing"
 )
@@ -13,28 +12,20 @@ func TestNew(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "test.lock")
 
-	l, err := New(lockPath)
+	c, err := New(lockPath)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	defer l.Close()
+	defer c.Close()
 
 	// Verify lock file exists.
-	if _, err := os.Stat(l.path); os.IsNotExist(err) {
-		t.Errorf("lock file %s does not exist", l.path)
-	}
-
-	// Verify PID is recorded.
-	if l.PID() == 0 {
-		t.Error("PID is zero")
-	}
-	if l.PID() != os.Getpid() {
-		t.Errorf("PID = %d, want %d", l.PID(), os.Getpid())
+	if _, err := os.Stat(c.Path()); os.IsNotExist(err) {
+		t.Errorf("lock file %s does not exist", c.Path())
 	}
 
 	// Verify path is correct.
-	if l.Path() != lockPath {
-		t.Errorf("Path() = %q, want %q", l.Path(), lockPath)
+	if c.Path() != lockPath {
+		t.Errorf("Path() = %q, want %q", c.Path(), lockPath)
 	}
 }
 
@@ -48,37 +39,10 @@ func TestLockPreventsSecondInstance(t *testing.T) {
 	}
 	defer l1.Close()
 
-	// Second instance with the same path should fail.
+	// Second instance with the same path should fail (flock prevents it).
 	_, err = New(lockPath)
 	if err == nil {
 		t.Fatal("expected error from second New() with same lock path, got nil")
-	}
-}
-
-func TestLockRecoveryOnStaleProcess(t *testing.T) {
-	dir := t.TempDir()
-	lockPath := filepath.Join(dir, "test.lock")
-
-	// Write a PID that doesn't exist (use a very high PID).
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatalf("open lock file: %v", err)
-	}
-	// Write a known-dead PID.
-	f.Truncate(0)
-	f.Seek(0, 0)
-	f.WriteString("99999999")
-	f.Close()
-
-	// Acquire lock — should succeed (stale lock recovery).
-	l, err := New(lockPath)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	defer l.Close()
-
-	if !l.IsStale() {
-		t.Error("expected IsStale() = true for recovered stale lock")
 	}
 }
 
@@ -103,26 +67,10 @@ func TestLockRecoveryOnAliveProcess(t *testing.T) {
 	f.WriteString(strconv.Itoa(cmd.Process.Pid))
 	f.Close()
 
-	// Acquire lock — should fail because child PID is alive.
+	// Acquire lock — should succeed (no PID check on Linux).
 	_, err = New(lockPath)
-	if err == nil {
-		t.Fatal("expected error from New() when recorded PID is alive, got nil")
-	}
-}
-
-func TestLockDir(t *testing.T) {
-	switch runtime.GOOS {
-	case "windows":
-		// On Windows, TMP or TEMP should be set.
-		// Just verify lockDir returns something non-empty.
-		d := lockDir()
-		if d == "" {
-			t.Error("lockDir() returned empty string")
-		}
-	default:
-		if got := lockDir(); got != "/tmp" {
-			t.Errorf("lockDir() = %q, want /tmp", got)
-		}
+	if err != nil {
+		t.Fatalf("expected success from New(), got error: %v", err)
 	}
 }
 
@@ -130,35 +78,37 @@ func TestCloseRemovesLockFile(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "test.lock")
 
-	l, err := New(lockPath)
+	c, err := New(lockPath)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 
+	lockP := c.Path()
+
 	// Lock file should exist.
-	if _, err := os.Stat(l.path); os.IsNotExist(err) {
-		t.Errorf("lock file %s does not exist before Close()", l.path)
+	if _, err := os.Stat(lockP); os.IsNotExist(err) {
+		t.Errorf("lock file %s does not exist before Close()", lockP)
 	}
 
-	if err := l.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
 
 	// Lock file should be removed.
-	if _, err := os.Stat(l.path); !os.IsNotExist(err) {
-		t.Errorf("lock file %s still exists after Close()", l.path)
+	if _, err := os.Stat(lockP); !os.IsNotExist(err) {
+		t.Errorf("lock file %s still exists after Close()", lockP)
 	}
 }
 
 func TestDefaultLockPath(t *testing.T) {
-	l, err := New("")
+	c, err := New("")
 	if err != nil {
 		t.Fatalf("New(\"\") error = %v", err)
 	}
-	defer l.Close()
+	defer c.Close()
 
 	// Path should contain the lock file name.
-	if filepath.Base(l.Path()) != lockFileName {
-		t.Errorf("default path base = %q, want %q", filepath.Base(l.Path()), lockFileName)
+	if filepath.Base(c.Path()) != lockFileName {
+		t.Errorf("default path base = %q, want %q", filepath.Base(c.Path()), lockFileName)
 	}
 }

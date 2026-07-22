@@ -96,9 +96,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	defer lock.Close()
 	logger.Info("instance lock acquired",
-		"pid", lock.PID(),
 		"path", lock.Path(),
-		"stale", lock.IsStale(),
 		"reason", "single-instance lock to prevent concurrent updates",
 		"result", "ok",
 	)
