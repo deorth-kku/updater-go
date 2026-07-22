@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // Controller manages a named process.
@@ -98,17 +98,8 @@ func (c *Controller) Stop(ctx context.Context) error {
 			"reason", "no stop_cmd and no service, terminate by image name",
 			"result", "kill image",
 		)
-		switch runtime.GOOS {
-		case "windows":
-			err := c.stopWindows(ctx)
-			if err != nil {
-				return err
-			}
-		default:
-			err := c.stopUnix(ctx)
-			if err != nil {
-				return err
-			}
+		if err := c.stopByImage(ctx); err != nil {
+			return err
 		}
 	}
 
@@ -120,61 +111,64 @@ func (c *Controller) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) stopUnix(ctx context.Context) error {
-	// Record running processes' cmdline/cwd before killing so they can be
-	// relaunched with the original command + working directory (gap #22).
+// stopByImage records running processes and kills them by name.
+// Used when no stopCmd or service mode is configured.
+func (c *Controller) stopByImage(ctx context.Context) error {
 	c.stored = findProcLaunches(c.imageName)
-	cmd := exec.CommandContext(ctx, "pkill", "-f", c.imageName)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
-}
 
-func (c *Controller) stopWindows(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "taskkill", "/IM", c.imageName, "/F")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
+	procs, err := findProcsByName(c.imageName)
+	if err != nil {
+		return err
+	}
+	for _, p := range procs {
+		if err := p.Kill(); err != nil {
+			c.log().Warn("kill process failed",
+				"image", c.imageName, "pid", p.Pid, "error", err)
+		}
+	}
+	return nil
 }
 
 // findProcLaunches returns the recorded (cmdline, cwd) of processes whose
-// comm (process name) matches name. This mirrors updater-rpc's psutil
-// proc.name() matching. Implemented for Unix via /proc.
+// name matches name. This mirrors updater-rpc's psutil proc.name() matching.
+// Implemented for both Unix and Windows via gopsutil.
 func findProcLaunches(name string) []procLaunch {
-	var out []procLaunch
-	if runtime.GOOS == "windows" {
-		return out
-	}
-	procDir, err := os.ReadDir("/proc")
+	procs, err := findProcsByName(name)
 	if err != nil {
-		return out
+		return nil
 	}
-	for _, e := range procDir {
-		if !e.IsDir() {
-			continue
-		}
-		pidDir := filepath.Join("/proc", e.Name())
-		// comm is the process name (matches psutil proc.name()).
-		commBytes, err := os.ReadFile(filepath.Join(pidDir, "comm"))
+	var out []procLaunch
+	for _, p := range procs {
+		cmdline, err := p.CmdlineSlice()
 		if err != nil {
 			continue
 		}
-		comm := strings.TrimSpace(string(commBytes))
-		if comm != name {
-			continue
-		}
-		cl, err := os.ReadFile(filepath.Join(pidDir, "cmdline"))
-		if err != nil {
-			continue
-		}
-		cmdline := splitCmdline(cl)
-		cwd, err := os.Readlink(filepath.Join(pidDir, "cwd"))
+		cwd, err := p.Cwd()
 		if err != nil {
 			cwd = ""
 		}
 		out = append(out, procLaunch{cmdline: cmdline, cwd: cwd})
 	}
 	return out
+}
+
+// findProcsByName returns all processes whose Name() matches name.
+func findProcsByName(name string) ([]*process.Process, error) {
+	all, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+	var out []*process.Process
+	for _, p := range all {
+		n, err := p.Name()
+		if err != nil {
+			continue
+		}
+		if n == name {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // splitCmdline splits a /proc/<pid>/cmdline null-separated blob into args.
@@ -352,16 +346,9 @@ func (c *Controller) WaitForStop(ctx context.Context, timeout time.Duration) err
 
 // IsRunning checks if a process with the given image name is running.
 func (c *Controller) IsRunning() bool {
-	switch runtime.GOOS {
-	case "windows":
-		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", c.imageName))
-		out, err := cmd.Output()
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(out), c.imageName)
-	default:
-		cmd := exec.Command("pgrep", "-x", c.imageName)
-		return cmd.Run() == nil
+	procs, err := findProcsByName(c.imageName)
+	if err != nil {
+		return false
 	}
+	return len(procs) > 0
 }
