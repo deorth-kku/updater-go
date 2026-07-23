@@ -54,7 +54,17 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 			"reason", "download.url configured, skip scraping",
 			"result", s.dlCfg.URL,
 		)
-		return s.buildFromDirectURL(ctx, s.dlCfg.URL)
+		// Even with a direct URL, fetch the page if version extraction
+		// needs to match against page content (from_page=true).
+		var err error
+		var page string
+		if s.verCfg.FromPage {
+			page, err = s.fetchPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return s.buildFromDirectURL(ctx, s.dlCfg.URL, page)
 	}
 
 	// Fetch the page
@@ -105,7 +115,7 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	}, nil
 }
 
-func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string) (*Release, error) {
+func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string, page string) (*Release, error) {
 	// Mirrors updater-rpc simplespider.getDlUrl: when download.data is
 	// configured, POST it to the direct URL and use the 3xx Location header.
 	// Note: try_redirect (HEAD-follow) is NOT applied to a direct URL in the
@@ -117,14 +127,9 @@ func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string) 
 		}
 	}
 
-	version := "unknown"
-	if s.verCfg.Regex != "" {
-		re, err := regexp.Compile(s.verCfg.Regex)
-		if err == nil {
-			if matches := re.FindStringSubmatch(extractFilename(dlURL)); len(matches) > 1 {
-				version = matches[1]
-			}
-		}
+	version, err := s.extractVersion(dlURL, page)
+	if err != nil {
+		return nil, err
 	}
 
 	fileName := extractFilename(dlURL)
@@ -298,12 +303,14 @@ func (s *SimpleSpiderAPI) extractVersion(dlURL, page string) (string, error) {
 		}
 		matches := re.FindAllStringSubmatch(source, -1)
 		idx := s.verCfg.Index
-		if len(matches) > 0 && idx < len(matches) {
+		if idx < len(matches) {
 			grp := matches[idx]
 			if len(grp) > 1 && grp[1] != "" {
 				return grp[1], nil
 			}
 			return grp[0], nil
+		} else {
+			return "", fmt.Errorf("cannot find version at position %d", idx)
 		}
 	}
 

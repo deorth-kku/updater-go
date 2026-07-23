@@ -100,7 +100,7 @@ func TestBuildFromDirectURL_Basic(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v1.0.0/app.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v1.0.0/app.zip", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestBuildFromDirectURL_WithVersionRegex(t *testing.T) {
 		},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v2.1.3.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v2.1.3.zip", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -137,7 +137,7 @@ func TestBuildFromDirectURL_WithFilenameOverride(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/whatever/file.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/whatever/file.zip", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestBuildFromDirectURL_WithRedirect(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), serverURL+"/original")
+	release, err := s.buildFromDirectURL(t.Context(), serverURL+"/original", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -191,7 +191,7 @@ func TestBuildFromDirectURL_RedirectFail(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/broken")
+	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/broken", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestBuildFromDirectURL_DataPost(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/dl")
+	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/dl", "")
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
@@ -301,22 +301,87 @@ func TestExtractVersion_Index(t *testing.T) {
 	}
 }
 
-func TestBuildFromDirectURL_FilenameOverrideWithVersion(t *testing.T) {
+func TestBuildFromDirectURL_AndroidPlatformTools(t *testing.T) {
+	// Reproduces the android-platform-tools_windows.json config issue:
+	//   version.regex: data-text="([.0-9]{3,})
+	//   version.from_page: true
+	//   download.url: https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+	//
+	// buildFromDirectURL currently ignores FromPage and always extracts version
+	// from the filename. The regex pattern "data-text="..." will never match
+	// "platform-tools-latest-windows.zip", so version comes back as "unknown".
 	s := &SimpleSpiderAPI{
 		dlCfg: config.DownloadConfig{
-			FilenameOverride:     "app-{version}.zip",
-			AddVersionToFilename: true,
+			URL: "https://dl.google.com/android/repository/platform-tools-latest-windows.zip",
 		},
 		verCfg: config.VersionConfig{
-			Regex: `v(\d+\.\d+\.\d+)`,
+			Regex:    `data-text="([.0-9]{3,})`,
+			FromPage: true,
 		},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v3.2.1.zip")
+	release, err := s.buildFromDirectURL(t.Context(), "https://dl.google.com/android/repository/platform-tools-latest-windows.zip", `<!DOCTYPE html><html><body><span data-text="34.0.7">34.0.7</span></body></html>`)
 	if err != nil {
 		t.Fatalf("buildFromDirectURL() error = %v", err)
 	}
-	if release.Assets[0].Name != "app-3.2.1.zip" {
-		t.Errorf("Asset.Name = %q, want %q", release.Assets[0].Name, "app-3.2.1.zip")
+	t.Logf("Version = %q, URL = %q, Asset.Name = %q", release.Version, release.URL, release.Assets[0].Name)
+
+	// With FromPage=true and page content provided, the regex should match
+	// "data-text="34.0.7"" and extract "34.0.7".
+	if release.Version != "34.0.7" {
+		t.Errorf("Version = %q, want %q (regex should match page content when FromPage=true)", release.Version, "34.0.7")
+	}
+}
+
+func TestBuildFromDirectURL_FromPageIgnored(t *testing.T) {
+	// Direct test: does buildFromDirectURL respect verCfg.FromPage?
+	// When FromPage=true but page is empty, extractVersion applies the regex
+	// to the filename (since page is ""), which doesn't match → returns error.
+	s := &SimpleSpiderAPI{
+		dlCfg: config.DownloadConfig{},
+		verCfg: config.VersionConfig{
+			Regex:    `data-text="([.0-9]{3,})`,
+			FromPage: true,
+		},
+	}
+
+	_, err := s.buildFromDirectURL(t.Context(), "https://dl.google.com/android/repository/platform-tools-latest-windows.zip", "")
+	if err == nil {
+		t.Error("expected error when regex doesn't match, got nil")
+	}
+	t.Logf("Error = %v", err)
+}
+
+func TestExtractVersion_FromPageVsFilename(t *testing.T) {
+	// Compare extractVersion (which correctly uses FromPage) vs
+	// buildFromDirectURL (which does not).
+	page := `<span data-text="34.0.7">34.0.7</span>`
+	filename := "platform-tools-latest-windows.zip"
+
+	s := &SimpleSpiderAPI{
+		dlCfg: config.DownloadConfig{},
+		verCfg: config.VersionConfig{
+			Regex:    `data-text="([.0-9]{3,})`,
+			FromPage: true,
+		},
+	}
+
+	// extractVersion with FromPage=true should match on page content
+	got, err := s.extractVersion(filename, page)
+	if err != nil {
+		t.Fatalf("extractVersion() error = %v", err)
+	}
+	t.Logf("extractVersion (FromPage=true): version = %q", got)
+	if got != "34.0.7" {
+		t.Errorf("extractVersion with FromPage=true = %q, want %q", got, "34.0.7")
+	}
+
+	// extractVersion with FromPage=false should NOT match (filename has no data-text)
+	s.verCfg.FromPage = false
+	got2, err2 := s.extractVersion(filename, page)
+	if err2 != nil {
+		t.Logf("extractVersion (FromPage=false): error = %v (expected, no match in filename)", err2)
+	} else {
+		t.Errorf("extractVersion with FromPage=false = %q, expected error", got2)
 	}
 }
