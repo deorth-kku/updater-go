@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 // Controller manages a named process.
 type Controller struct {
 	imageName   string
+	savePath    string
 	stopCmd     string
 	startCmd    string
 	service     bool
@@ -38,9 +41,10 @@ func New(imageName string, logger *slog.Logger) *Controller {
 }
 
 // NewWithConfig creates a Controller with stop/start commands, service mode, and restart wait.
-func NewWithConfig(imageName, stopCmd, startCmd string, service bool, restartWait int, logger *slog.Logger) *Controller {
+func NewWithConfig(imageName, savePath, stopCmd, startCmd string, service bool, restartWait int, logger *slog.Logger) *Controller {
 	return &Controller{
 		imageName:   imageName,
+		savePath:    savePath,
 		stopCmd:     stopCmd,
 		startCmd:    startCmd,
 		service:     service,
@@ -60,16 +64,17 @@ func (c *Controller) log() *slog.Logger {
 
 // Stop terminates the process by image name, stop_cmd, or service.
 // After stopping, waits for RestartWait seconds before returning.
-func (c *Controller) Stop(ctx context.Context) error {
+func (c *Controller) Stop(ctx context.Context) (bool, error) {
 	if c.imageName == "" && c.stopCmd == "" && !c.service {
 		c.log().Debug("process stop skipped",
 			"image", c.imageName,
 			"reason", "no image_name, stop_cmd, or service configured",
 			"result", "skip",
 		)
-		return nil
+		return false, nil
 	}
 
+	stopped := false
 	// Custom stop command takes priority
 	if c.stopCmd != "" {
 		c.log().Info("process stop strategy",
@@ -77,47 +82,48 @@ func (c *Controller) Stop(ctx context.Context) error {
 			"reason", "custom stop_cmd configured, takes priority",
 			"result", "run stop_cmd",
 		)
-		err := c.runCustomCmd(ctx, c.stopCmd)
-		if err != nil {
-			return err
+		if err := c.runCustomCmd(ctx, c.stopCmd); err != nil {
+			return false, err
 		}
+		stopped = true
 	} else if c.service {
 		c.log().Info("process stop strategy",
 			"image", c.imageName,
 			"reason", "service mode enabled, no custom stop_cmd",
 			"result", "stop service",
 		)
-		err := c.stopService(ctx)
-		if err != nil {
-			return err
+		if err := c.stopService(ctx); err != nil {
+			return false, err
 		}
+		stopped = true
 	} else {
 		c.log().Info("process stop strategy",
 			"image", c.imageName,
 			"reason", "no stop_cmd and no service, terminate by image name",
 			"result", "kill image",
 		)
-		if err := c.stopByImage(ctx); err != nil {
-			return err
+		s, err := c.stopByImage(ctx)
+		if err != nil {
+			return false, err
 		}
+		stopped = s
 	}
 
 	// Wait for restart_wait seconds
 	if c.restartWait > 0 {
 		time.Sleep(time.Duration(c.restartWait) * time.Second)
 	}
-
-	return nil
+	return stopped, nil
 }
 
 // stopByImage records running processes and kills them by name.
 // Used when no stopCmd or service mode is configured.
-func (c *Controller) stopByImage(ctx context.Context) error {
+func (c *Controller) stopByImage(ctx context.Context) (bool, error) {
 	c.stored = findProcLaunches(c.imageName)
 
 	procs, err := findProcsByName(c.imageName)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, p := range procs {
 		if err := p.Kill(); err != nil {
@@ -125,7 +131,7 @@ func (c *Controller) stopByImage(ctx context.Context) error {
 				"image", c.imageName, "pid", p.Pid, "error", err)
 		}
 	}
-	return nil
+	return len(procs) > 0, nil
 }
 
 // findProcLaunches returns the recorded (cmdline, cwd) of processes whose
@@ -195,7 +201,7 @@ func (c *Controller) runCustomCmd(ctx context.Context, cmdStr string) error {
 }
 
 // Start launches the process by image name, start_cmd, or service.
-func (c *Controller) Start(ctx context.Context, path string) error {
+func (c *Controller) Start(ctx context.Context) error {
 	if c.imageName == "" && c.startCmd == "" && !c.service {
 		c.log().Debug("process start skipped",
 			"image", c.imageName,
@@ -232,16 +238,8 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 		return nil
 	}
 
-	// Launch by path (image_name is used for identification, path is the executable)
-	if path == "" {
-		c.log().Error("process start failed",
-			"image", c.imageName,
-			"reason", "no start_cmd/service and no executable path provided",
-			"result", "error",
-		)
-		return fmt.Errorf("process start: no path provided for %s", c.imageName)
-	}
-
+	// Launch by path (computed from savePath + imageName)
+	path := c.resolveExePath()
 	c.log().Info("process start strategy",
 		"image", c.imageName,
 		"path", path,
@@ -252,6 +250,16 @@ func (c *Controller) Start(ctx context.Context, path string) error {
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Start()
+}
+
+// resolveExePath resolves the installed executable path from the image name
+// and save path, adding .exe on Windows when needed.
+func (c *Controller) resolveExePath() string {
+	p := filepath.Join(c.savePath, c.imageName)
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(p), ".exe") {
+		p += ".exe"
+	}
+	return p
 }
 
 // relaunch restarts stored processes with their original cmdline and cwd (gap #22).

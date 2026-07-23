@@ -96,7 +96,7 @@ func TestStopStart_PreservesCmdlineCwd(t *testing.T) {
 		},
 	}
 
-	if err := ctrl.Start(t.Context(), ""); err != nil {
+	if err := ctrl.Start(t.Context()); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 

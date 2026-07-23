@@ -329,6 +329,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 
 		ctrl := process.NewWithConfig(
 			imageName,
+			u.entry.SavePath,
 			u.projectCfg.Process.StopCmd,
 			u.projectCfg.Process.StartCmd,
 			u.projectCfg.Process.Service,
@@ -337,75 +338,24 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		)
 
 		// Stop process
-		if u.projectCfg.Process.StopCmd != "" {
-			u.log().Info("stopping process",
+		stopped, err := ctrl.Stop(ctx)
+		if err != nil {
+			u.log().Warn("stop failed", "project", result.ProjectName, "error", err)
+			return result
+		}
+		if !stopped {
+			u.log().Info("no process running, skip start",
 				"project", result.ProjectName,
 				"image", imageName,
-				"reason", "custom stop_cmd configured, takes priority over service/image",
-				"result", "run stop_cmd",
+				"reason", "stop found nothing to stop",
+				"result", "skip start",
 			)
-			if err := ctrl.Stop(ctx); err != nil {
-				u.log().Warn("stop command failed", "project", result.ProjectName, "error", err)
-			}
-		} else if u.projectCfg.Process.Service {
-			u.log().Info("stopping process",
-				"project", result.ProjectName,
-				"image", imageName,
-				"reason", "service mode enabled, no custom stop_cmd",
-				"result", "stop service",
-			)
-			if err := ctrl.Stop(ctx); err != nil {
-				u.log().Warn("stop failed", "project", result.ProjectName, "error", err)
-			}
-		} else {
-			u.log().Info("stopping process",
-				"project", result.ProjectName,
-				"image", imageName,
-				"reason", "no stop_cmd and no service, terminate by image name",
-				"result", "kill image",
-			)
-			if err := ctrl.Stop(ctx); err != nil {
-				u.log().Warn("stop failed", "project", result.ProjectName, "error", err)
-			}
+			return result
 		}
 
 		// Start process
-		if u.projectCfg.Process.StartCmd != "" {
-			u.log().Info("starting process",
-				"project", result.ProjectName,
-				"image", imageName,
-				"reason", "custom start_cmd configured, takes priority over service/image",
-				"result", "run start_cmd",
-			)
-			if err := ctrl.Start(ctx, ""); err != nil {
-				u.log().Warn("start command failed", "project", result.ProjectName, "error", err)
-			}
-		} else if u.projectCfg.Process.Service {
-			u.log().Info("starting process",
-				"project", result.ProjectName,
-				"image", imageName,
-				"reason", "service mode enabled, no custom start_cmd",
-				"result", "start service",
-			)
-			if err := ctrl.Start(ctx, ""); err != nil {
-				u.log().Warn("start failed", "project", result.ProjectName, "error", err)
-			}
-		} else {
-			// Find the executable in the save path
-			exePath := filepath.Join(u.entry.SavePath, imageName)
-			if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(exePath), ".exe") {
-				exePath += ".exe"
-			}
-			u.log().Info("starting process",
-				"project", result.ProjectName,
-				"image", imageName,
-				"path", exePath,
-				"reason", "no start_cmd and no service, launch executable by path",
-				"result", "start binary",
-			)
-			if err := ctrl.Start(ctx, exePath); err != nil {
-				u.log().Warn("start failed", "project", result.ProjectName, "error", err)
-			}
+		if err := ctrl.Start(ctx); err != nil {
+			u.log().Warn("start failed", "project", result.ProjectName, "error", err)
 		}
 	}
 
