@@ -292,6 +292,7 @@ func run(cmd *cobra.Command, args []string) error {
 			result := u.Update(ctx)
 			mu.Lock()
 			defer mu.Unlock()
+			result.ProjectName = proj.Name
 			results = append(results, result)
 			if result.Error != nil {
 				logger.Error("update failed", "project", proj.Name, "error", result.Error)
