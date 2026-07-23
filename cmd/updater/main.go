@@ -241,7 +241,6 @@ func run(cmd *cobra.Command, args []string) error {
 
 	var results []*updater.UpdateResult
 	var mu sync.Mutex
-	var anyError bool
 
 	for _, proj := range cfg.Projects {
 		switch {
@@ -296,7 +295,6 @@ func run(cmd *cobra.Command, args []string) error {
 			results = append(results, result)
 			if result.Error != nil {
 				logger.Error("update failed", "project", proj.Name, "error", result.Error)
-				anyError = true
 			} else {
 				updateVersionAndHold(cfg, proj.Name, result.NewVersion, result.RolledBack, flagForce)
 				if err := writeJSON(configPath, cfg); err != nil {
@@ -307,8 +305,25 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	wg.Wait()
-	if anyError {
-		logger.Error("one or more projects failed", "reason", "check individual project logs above")
+
+	var errOnce sync.Once
+	for _, r := range results {
+		if r.Error != nil {
+			errOnce.Do(func() {
+				logger.Error("one or more projects failed",
+					"reason", "detailed results below",
+				)
+			})
+			logger.Error("project failed",
+				"project", r.ProjectName,
+				"old_version", r.OldVersion,
+				"new_version", r.NewVersion,
+				"downloaded", r.Downloaded,
+				"extracted", r.Extracted,
+				"rolled_back", r.RolledBack,
+				"error", r.Error,
+			)
+		}
 	}
 
 	if flagWait {
