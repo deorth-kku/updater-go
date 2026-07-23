@@ -101,16 +101,11 @@ func TestBuildFromDirectURL_Basic(t *testing.T) {
 		verCfg: config.VersionConfig{},
 	}
 
-	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/v1.0.0/app.zip", "")
-	if err != nil {
-		t.Fatalf("buildFromDirectURL() error = %v", err)
+	_, err := s.buildFromDirectURL(t.Context(), "https://example.com/v1.0.0/app.zip", "")
+	if err == nil {
+		t.Fatalf("expected error when no regex configured, got nil")
 	}
-	if release.Version != "unknown" {
-		t.Errorf("Version = %q, want %q", release.Version, "unknown")
-	}
-	if release.Assets[0].Name != "app.zip" {
-		t.Errorf("Asset.Name = %q, want %q", release.Assets[0].Name, "app.zip")
-	}
+	t.Logf("Error = %v", err)
 }
 
 func TestBuildFromDirectURL_WithVersionRegex(t *testing.T) {

@@ -255,29 +255,27 @@ func (s *SimpleSpiderAPI) extractVersion(dlURL, page string) (string, error) {
 	// Mirrors updater-rpc's getVersion(regex, from_page, index): when
 	// from_page is set the regex is applied to the page text, otherwise to
 	// the download filename. version.index selects which regex match to use.
+	if s.verCfg.Regex == "" {
+		return "", fmt.Errorf("no version regex configured")
+	}
 	source := extractFilename(dlURL)
 	if s.verCfg.FromPage {
 		source = page
 	}
-	if s.verCfg.Regex != "" {
-		re, err := regexp.Compile(s.verCfg.Regex)
-		if err != nil {
-			return "", fmt.Errorf("compile version regex: %w", err)
-		}
-		matches := re.FindAllStringSubmatch(source, -1)
-		idx := s.verCfg.Index
-		if idx < len(matches) {
-			grp := matches[idx]
-			if len(grp) > 1 && grp[1] != "" {
-				return grp[1], nil
-			}
-			return grp[0], nil
-		} else {
-			return "", fmt.Errorf("cannot find version at position %d", idx)
-		}
+	re, err := regexp.Compile(s.verCfg.Regex)
+	if err != nil {
+		return "", fmt.Errorf("compile version regex: %w", err)
 	}
-
-	return extractFilename(dlURL), nil
+	matches := re.FindAllStringSubmatch(source, -1)
+	idx := s.verCfg.Index
+	if idx < len(matches) {
+		grp := matches[idx]
+		if len(grp) > 1 && grp[1] != "" {
+			return grp[1], nil
+		}
+		return grp[0], nil
+	}
+	return "", fmt.Errorf("cannot find version at position %d", idx)
 }
 
 // --- helpers ---
