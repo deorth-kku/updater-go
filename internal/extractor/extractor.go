@@ -203,14 +203,9 @@ func (d *Decompressor) extractWithSingleDir(ctx context.Context, prefix string, 
 	}
 
 	// If the prefix directory doesn't exist (e.g. no files matched the inner
-	// selector) there is nothing to move.
+	// selector) return an error.
 	if _, err := os.Stat(srcPrefix); err != nil {
-		d.log().Warn("single_dir prefix missing after extraction",
-			"prefix", prefix,
-			"reason", "no extracted files under prefix, nothing to move",
-			"result", "skip move",
-		)
-		return nil
+		return fmt.Errorf("single_dir prefix missing after extraction: %w", err)
 	}
 
 	return moveDirContents(srcPrefix, destDir)

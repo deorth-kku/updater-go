@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -772,6 +773,34 @@ func TestDecompressor_SingleDir_WithPrefix(t *testing.T) {
 		"bin/go":     "binary\n",
 		"readme.txt": "readme\n",
 	})
+}
+
+// TestDecompressor_SingleDir_String_NotFound verifies that when single_dir is
+// a string prefix that does not exist in the archive, Extract returns an error.
+func TestDecompressor_SingleDir_String_NotFound(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.zip")
+	writeZipGo(t, archivePath, map[string]string{
+		"app/bin/go":     "binary\n",
+		"app/readme.txt": "readme\n",
+		"other/file.txt": "other\n",
+	})
+
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{
+		SingleDir: config.BoolOrString{IsString: true, StringVal: "nonexistent"},
+	}
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	err = d.Extract(t.Context(), destDir)
+	if err == nil {
+		t.Fatal("Extract() expected error when single_dir prefix is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "single_dir prefix missing") {
+		t.Errorf("Extract() error = %v, want error containing 'single_dir prefix missing'", err)
+	}
 }
 
 func TestDecompressor_SingleDir_NoSingleDir(t *testing.T) {
