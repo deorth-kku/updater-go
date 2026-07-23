@@ -23,7 +23,6 @@ import (
 	"github.com/deorth-kku/updater-go/internal/metadata"
 	"github.com/deorth-kku/updater-go/internal/updater"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -221,11 +220,12 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Run updates with bounded parallelism
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(jobs)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, jobs)
 
 	var results []*updater.UpdateResult
 	var mu sync.Mutex
+	var anyError bool
 
 	for _, proj := range cfg.Projects {
 		if !proj.Enabled() {
@@ -260,32 +260,33 @@ func run(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		g.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}        // acquire slot
+			defer func() { <-sem }() // release slot
+
 			upLogger := logger.With("component", "updater", "project", proj.Name)
 			u := updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, upLogger)
-			result := u.Update(gctx)
+			result := u.Update(ctx)
 			mu.Lock()
 			defer mu.Unlock()
 			results = append(results, result)
 			if result.Error != nil {
-				return result.Error
+				logger.Error("update failed", "project", proj.Name, "error", result.Error)
+				anyError = true
+			} else {
+				updateVersion(cfg, proj.Name, result.NewVersion)
+				if err := writeJSON(configPath, cfg); err != nil {
+					logger.Error("write config failed", "project", proj.Name, "error", err)
+				}
 			}
-			updateVersion(cfg, proj.Name, result.NewVersion)
-			return writeJSON(configPath, cfg)
-		})
+		}()
 	}
 
-	if err := g.Wait(); err != nil {
-		logger.Error("update failed", "error", err)
-	}
-
-	// Log results
-	for _, r := range results {
-		if r.Error != nil {
-			logger.Error("update failed", "project", r.ProjectName, "error", r.Error)
-		} else {
-			logger.Info("update ok", "project", r.ProjectName, "version", r.NewVersion)
-		}
+	wg.Wait()
+	if anyError {
+		logger.Error("one or more projects failed", "reason", "check individual project logs above")
 	}
 
 	if flagWait {

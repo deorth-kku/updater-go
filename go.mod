@@ -10,7 +10,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/spf13/cobra v1.9.1
 	github.com/ulikunitz/xz v0.5.15
-	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.47.0
 )
 

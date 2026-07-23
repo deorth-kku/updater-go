@@ -343,7 +343,7 @@ Flow:
 
 ## Concurrency Model
 
-- `golang.org/x/sync/errgroup` + `golang.org/x/sync/semaphore.Weighted` for bounded parallelism
+- `sync.WaitGroup` + buffered channel for bounded parallelism
 - Worker count = `--jobs` (default: `runtime.GOMAXPROCS(0)`)
 - Each project update runs in its own goroutine; errors collected via `errgroup`
 - Config writes serialized via `sync.Mutex`
@@ -359,7 +359,7 @@ Flow:
 | `github.com/bodgit/sevenzip` | GitHub | Pure Go 7z extraction |
 | `github.com/ulikunitz/xz` | GitHub | Pure Go XZ decompression |
 | `github.com/spf13/cobra` | GitHub | CLI framework with auto-completion |
-| `golang.org/x/sync` | Go module | `errgroup` + semaphore |
+| `sync` | stdlib | `WaitGroup` + `Mutex` for bounded parallelism |
 
 Everything else is Go stdlib: `net/http`, `encoding/json`, `archive/zip`, `archive/tar`, `compress/gzip`, `log/slog`, `os/exec`, `context`.
 
