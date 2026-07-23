@@ -130,7 +130,9 @@ func TestBuildFromDirectURL_WithFilenameOverride(t *testing.T) {
 		dlCfg: config.DownloadConfig{
 			FilenameOverride: "custom.zip",
 		},
-		verCfg: config.VersionConfig{},
+		verCfg: config.VersionConfig{
+			Regex: `.*`,
+		},
 	}
 
 	release, err := s.buildFromDirectURL(t.Context(), "https://example.com/whatever/file.zip", "")
@@ -161,7 +163,9 @@ func TestBuildFromDirectURL_WithRedirect(t *testing.T) {
 		dlCfg: config.DownloadConfig{
 			TryRedirect: true,
 		},
-		verCfg: config.VersionConfig{},
+		verCfg: config.VersionConfig{
+			Regex: `.*`,
+		},
 	}
 
 	release, err := s.buildFromDirectURL(t.Context(), serverURL+"/original", "")
@@ -184,7 +188,9 @@ func TestBuildFromDirectURL_RedirectFail(t *testing.T) {
 		dlCfg: config.DownloadConfig{
 			TryRedirect: true,
 		},
-		verCfg: config.VersionConfig{},
+		verCfg: config.VersionConfig{
+			Regex: `.*`,
+		},
 	}
 
 	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/broken", "")
@@ -219,7 +225,9 @@ func TestBuildFromDirectURL_DataPost(t *testing.T) {
 			URL:  server.URL + "/dl",
 			Data: map[string]any{"token": "abc", "id": 42},
 		},
-		verCfg: config.VersionConfig{},
+		verCfg: config.VersionConfig{
+			Regex: `.*`,
+		},
 	}
 
 	release, err := s.buildFromDirectURL(t.Context(), server.URL+"/dl", "")

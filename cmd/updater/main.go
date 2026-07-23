@@ -260,9 +260,7 @@ func run(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}        // acquire slot
 			defer func() { <-sem }() // release slot
 
@@ -281,7 +279,7 @@ func run(cmd *cobra.Command, args []string) error {
 					logger.Error("write config failed", "project", proj.Name, "error", err)
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
