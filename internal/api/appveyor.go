@@ -36,7 +36,8 @@ func (a *AppveyorAPI) SetBranch(branch string) {
 	a.branch = branch
 }
 
-func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
+// fetchAllBuilds fetches the build history from AppVeyor.
+func (a *AppveyorAPI) fetchAllBuilds(ctx context.Context) (appveyorHistory, error) {
 	baseURL := "https://ci.appveyor.com/api"
 	branchParam := ""
 	if a.branch != "" {
@@ -56,16 +57,24 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 
 	resp, err := a.downloader.Get(ctx, historyURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("appveyor history: %w", err)
+		return appveyorHistory{}, fmt.Errorf("appveyor history: %w", err)
 	}
 
 	var history appveyorHistory
 	if err := json.Unmarshal(resp.Body, &history); err != nil {
-		return nil, fmt.Errorf("parse appveyor history: %w", err)
+		return appveyorHistory{}, fmt.Errorf("parse appveyor history: %w", err)
 	}
+	return history, nil
+}
+
+// buildReleases fetches detail and artifacts for each non-PR build and
+// returns a *Release for each one. Builds without artifacts older than 30
+// days are skipped.
+func (a *AppveyorAPI) buildReleases(history appveyorHistory) []*Release {
+	baseURL := "https://ci.appveyor.com/api"
+	var result []*Release
 
 	for _, build := range history.Builds {
-		// Skip PR-triggered builds when no_pull is enabled
 		if build.PullRequestID != "" {
 			a.logger.Debug("appveyor build skipped",
 				"account", a.accountName,
@@ -80,7 +89,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		version := build.Version
 		buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
 			baseURL, a.accountName, a.projectName, version)
-		buildResp, err := a.downloader.Get(ctx, buildURL, nil)
+		buildResp, err := a.downloader.Get(context.Background(), buildURL, nil)
 		if err != nil {
 			continue
 		}
@@ -103,7 +112,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 
 		artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
-		artResp, err := a.downloader.Get(ctx, artifactsURL, nil)
+		artResp, err := a.downloader.Get(context.Background(), artifactsURL, nil)
 		if err != nil {
 			continue
 		}
@@ -138,147 +147,91 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 			continue
 		}
 
-		a.logger.Info("latest version detected",
+		rel := &Release{
+			Version:   version,
+			Artifacts: artifacts,
+			JobID:     jobID,
+			BaseURL:   baseURL,
+		}
+		a.logger.Debug("appveyor build listed",
 			"account", a.accountName,
 			"project", a.projectName,
 			"version", version,
 			"job_id", jobID,
 			"artifacts", len(artifacts),
-			"reason", "found build with artifacts",
+			"reason", "added to list",
 			"result", version,
 		)
-		return &Release{
-			Version:   version,
-			Artifacts: artifacts,
-			JobID:     jobID,
-			BaseURL:   baseURL,
-		}, nil
+		result = append(result, rel)
 	}
-
-	a.logger.Error("no appveyor build found",
-		"account", a.accountName,
-		"project", a.projectName,
-		"reason", "no build satisfied artifact/age criteria",
-		"result", "error",
-	)
-	return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
+	return result
 }
 
-// LatestByVersion finds a specific build by version string. It iterates
-// through all builds in history, matching build.Version against the target,
-// then fetches the build detail and artifacts to build the Release.
-func (a *AppveyorAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
-	baseURL := "https://ci.appveyor.com/api"
-	branchParam := ""
-	if a.branch != "" {
-		branchParam = "&branch=" + a.branch
+// List returns all builds from AppVeyor.
+func (a *AppveyorAPI) List(ctx context.Context) ([]*Release, error) {
+	history, err := a.fetchAllBuilds(ctx)
+	if err != nil {
+		return nil, err
 	}
+	return a.buildReleases(history), nil
+}
 
-	historyURL := fmt.Sprintf("%s/projects/%s/%s/history?recordsNumber=100%s",
-		baseURL, a.accountName, a.projectName, branchParam)
-
-	a.logger.Debug("appveyor query (rollback)",
+// Latest returns the first build from List.
+func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
+	list, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		a.logger.Error("no appveyor build found",
+			"account", a.accountName,
+			"project", a.projectName,
+			"reason", "List returned empty",
+			"result", "error",
+		)
+		return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
+	}
+	a.logger.Info("latest version detected",
 		"account", a.accountName,
 		"project", a.projectName,
-		"target_version", version,
-		"reason", "fetch build history to find target version",
-		"result", historyURL,
+		"version", list[0].Version,
+		"job_id", list[0].JobID,
+		"artifacts", len(list[0].Artifacts),
+		"reason", "took first entry from List",
+		"result", list[0].Version,
 	)
+	return list[0], nil
+}
 
-	resp, err := a.downloader.Get(ctx, historyURL, nil)
+// LatestByVersion finds a specific build by version string using List.
+func (a *AppveyorAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
+	list, err := a.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("appveyor history: %w", err)
+		return nil, err
 	}
 
-	var history appveyorHistory
-	if err := json.Unmarshal(resp.Body, &history); err != nil {
-		return nil, fmt.Errorf("parse appveyor history: %w", err)
-	}
-
-	for _, build := range history.Builds {
-		// Skip PR-triggered builds
-		if build.PullRequestID != "" {
-			a.logger.Debug("appveyor build skipped (rollback)",
-				"account", a.accountName,
-				"project", a.projectName,
-				"version", build.Version,
-				"reason", "build is PR-triggered, excluded",
-				"result", "skip",
-			)
-			continue
-		}
-
-		if build.Version != version {
-			a.logger.Debug("appveyor rollback version mismatch",
-				"account", a.accountName,
-				"project", a.projectName,
-				"build_version", build.Version,
-				"target_version", version,
-				"reason", "build version does not match target",
-				"result", "skip",
-			)
-			continue
-		}
-
-		a.logger.Debug("appveyor rollback version matched",
+	for i, rel := range list {
+		a.logger.Debug("appveyor rollback check",
 			"account", a.accountName,
 			"project", a.projectName,
-			"version", build.Version,
-			"reason", "target version found in build history",
-			"result", "proceed",
+			"index", i,
+			"build_version", rel.Version,
+			"target_version", version,
+			"reason", "comparing computed version against target",
+			"result", fmt.Sprintf("match=%v", rel.Version == version),
 		)
-
-		// Fetch build detail and artifacts (same logic as Latest)
-		buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
-			baseURL, a.accountName, a.projectName, build.Version)
-		buildResp, err := a.downloader.Get(ctx, buildURL, nil)
-		if err != nil {
-			continue
-		}
-
-		var buildDetail appveyorBuildDetail
-		if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
-			continue
-		}
-
-		jobID := findJobID(buildDetail.Build.Jobs)
-		if jobID == "" {
-			a.logger.Debug("appveyor rollback build skipped",
+		if rel.Version == version {
+			a.logger.Info("rollback version detected",
 				"account", a.accountName,
 				"project", a.projectName,
-				"version", build.Version,
-				"reason", "no suitable job id found in build",
-				"result", "skip",
+				"version", rel.Version,
+				"job_id", rel.JobID,
+				"artifacts", len(rel.Artifacts),
+				"reason", "target version matched during rollback scan",
+				"result", rel.Version,
 			)
-			continue
+			return rel, nil
 		}
-
-		artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
-		artResp, err := a.downloader.Get(ctx, artifactsURL, nil)
-		if err != nil {
-			continue
-		}
-
-		var artifacts []AppveyorArtifact
-		if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
-			continue
-		}
-
-		a.logger.Info("rollback version detected",
-			"account", a.accountName,
-			"project", a.projectName,
-			"version", build.Version,
-			"job_id", jobID,
-			"artifacts", len(artifacts),
-			"reason", "found target build with artifacts for rollback",
-			"result", build.Version,
-		)
-		return &Release{
-			Version:   build.Version,
-			Artifacts: artifacts,
-			JobID:     jobID,
-			BaseURL:   baseURL,
-		}, nil
 	}
 
 	a.logger.Error("rollback version not found",

@@ -371,17 +371,19 @@ func TestNewAPI_UnknownType(t *testing.T) {
 }
 
 func TestGitHubAPI_NoPull(t *testing.T) {
-	latestRelease := githubRelease{
-		TagName: "v3.0.0",
-		Name:    "Latest Release",
-		Assets: []githubAsset{
-			{Name: "app-v3.0.0.zip", BrowserDownloadURL: "https://github.com/releases/latest.zip"},
+	releases := []githubRelease{
+		{
+			TagName: "v3.0.0",
+			Name:    "Latest Release",
+			Assets: []githubAsset{
+				{Name: "app-v3.0.0.zip", BrowserDownloadURL: "https://github.com/releases/latest.zip"},
+			},
 		},
 	}
 
 	mdl := newMockDownloader()
-	body, _ := json.Marshal(latestRelease)
-	mdl.On("/repos/test/project/releases/latest", &HTTPResponse{
+	body, _ := json.Marshal(releases)
+	mdl.On("/repos/test/project/releases", &HTTPResponse{
 		StatusCode: 200,
 		Body:       body,
 	})
@@ -390,14 +392,14 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 		AccountName: "test",
 		ProjectName: "project",
 	}, mdl, slog.Default())
-	api.SetNoPull(true)
+	api.SetNoPreRelease(true)
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
-	if rel.Version != "Latest Release" {
-		t.Errorf("Version = %q, want %q", rel.Version, "Latest Release")
+	if rel.Version != "v3.0.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "v3.0.0")
 	}
 }
 

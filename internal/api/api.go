@@ -27,6 +27,7 @@ type Asset struct {
 
 // API is the interface all version-source backends implement.
 type API interface {
+	List(ctx context.Context) ([]*Release, error)
 	Latest(ctx context.Context) (*Release, error)
 	LatestByVersion(ctx context.Context, version string) (*Release, error)
 }
@@ -37,7 +38,7 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 	switch cfg.APIType {
 	case "github":
 		api := NewGitHubAPI(cfg, dl, logger)
-		api.SetNoPull(buildCfg.NoPull)
+		api.SetNoPreRelease(buildCfg.NoPull) // github use this flag as no-prerelease
 		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "github",

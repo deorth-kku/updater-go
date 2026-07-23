@@ -53,100 +53,8 @@ type rssFeed struct {
 	Channel rssChannel `xml:"channel"`
 }
 
-// LatestByVersion finds a specific release by version (pubDate) string. It
-// iterates through all RSS items, applying the same filename filter as
-// Latest, and returns the first item whose pubDate matches the target.
-func (s *SourceforgeAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
-	rssURL := s.rssFeedURL()
-	s.logger.Debug("sourceforge query (rollback)",
-		"project", s.projectName,
-		"target_version", version,
-		"reason", "fetch RSS feed to find target version",
-		"result", rssURL,
-	)
-	resp, err := s.downloader.Get(ctx, rssURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("sourceforge rss: %w", err)
-	}
-
-	var feed rssFeed
-	if err := xml.Unmarshal(resp.Body, &feed); err != nil {
-		return nil, fmt.Errorf("parse sourceforge rss: %w", err)
-	}
-
-	keyword := s.dlCfg.Keyword
-	noKeyword := s.dlCfg.ExcludeKeyword
-	filetype := s.dlCfg.Filetype
-	if len(filetype) == 0 {
-		filetype = config.StringOrSlice{"7z"}
-	}
-	downloadPrefix := fmt.Sprintf("https://download.sourceforge.net/%s", s.projectName)
-
-	for _, item := range feed.Channel.Item {
-		// Parse date for sorting (most recent first in RSS)
-		_, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", item.PubDate)
-		if err != nil {
-			_, err = time.Parse("Mon, 02 Jan 2006 15:04:05 UT", item.PubDate)
-			if err != nil {
-				s.logger.Debug("sourceforge item skipped (rollback)",
-					"project", s.projectName,
-					"title", item.Title,
-					"reason", "pub_date did not match known formats",
-					"result", "skip",
-				)
-				continue
-			}
-		}
-
-		fileName := strings.TrimPrefix(item.Title, "/")
-		if !sourceforgeFilenameCheck(fileName, keyword, noKeyword, filetype) {
-			s.logger.Debug("sourceforge item rejected (rollback)",
-				"project", s.projectName,
-				"file", fileName,
-				"reason", "did not match keyword/exclude/filetype filter",
-				"result", "skip",
-			)
-			continue
-		}
-
-		if item.PubDate == version {
-			s.version = item.PubDate
-			dlURL := downloadPrefix + "/" + fileName
-			s.logger.Info("rollback version found",
-				"project", s.projectName,
-				"version", item.PubDate,
-				"file", fileName,
-				"reason", "target version matched during rollback scan",
-				"result", item.PubDate,
-			)
-			return &Release{
-				URL:     dlURL,
-				Version: item.PubDate,
-				Assets: []Asset{
-					{URL: dlURL, Name: fileName},
-				},
-			}, nil
-		}
-
-		s.logger.Debug("sourceforge rollback version mismatch",
-			"project", s.projectName,
-			"item_version", item.PubDate,
-			"target_version", version,
-			"reason", "item pubDate does not match target version",
-			"result", "skip",
-		)
-	}
-
-	s.logger.Error("rollback version not found",
-		"project", s.projectName,
-		"target_version", version,
-		"reason", "no RSS item matched the target version string",
-		"result", "error",
-	)
-	return nil, fmt.Errorf("version %q not found in sourceforge RSS for %s", version, s.projectName)
-}
-
-func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
+// fetchAllItems fetches the RSS feed and returns all items.
+func (s *SourceforgeAPI) fetchAllItems(ctx context.Context) ([]rssItem, error) {
 	rssURL := s.rssFeedURL()
 	s.logger.Debug("sourceforge query",
 		"project", s.projectName,
@@ -162,29 +70,26 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 	if err := xml.Unmarshal(resp.Body, &feed); err != nil {
 		return nil, fmt.Errorf("parse sourceforge rss: %w", err)
 	}
+	return feed.Channel.Item, nil
+}
 
-	// Mirrors updater-rpc's SourceforgeApi.getDlUrl: iterate RSS items,
-	// apply filename_check(keyword, no_keyword, filetype) to each file title,
-	// and pick the `index`-th match (default 0). The matched item's pubDate
-	// is the version.
+// buildReleases filters RSS items by filename criteria and builds Release
+// entries for all matches.
+func (s *SourceforgeAPI) buildReleases(items []rssItem) []*Release {
 	keyword := s.dlCfg.Keyword
 	noKeyword := s.dlCfg.ExcludeKeyword
 	filetype := s.dlCfg.Filetype
-	// The reference defaults filetype to ["7z"] when unset (see
-	// SourceforgeApi.getDlUrl's filetype="7z" default).
 	if len(filetype) == 0 {
 		filetype = config.StringOrSlice{"7z"}
 	}
-	index := s.dlCfg.Index
-
 	downloadPrefix := fmt.Sprintf("https://download.sourceforge.net/%s", s.projectName)
 
-	match := 0
-	for _, item := range feed.Channel.Item {
+	var result []*Release
+	matchIdx := 0
+	for _, item := range items {
 		// Parse date for sorting (most recent first in RSS)
 		_, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", item.PubDate)
 		if err != nil {
-			// Try alternative format
 			_, err = time.Parse("Mon, 02 Jan 2006 15:04:05 UT", item.PubDate)
 			if err != nil {
 				s.logger.Debug("sourceforge item skipped",
@@ -208,21 +113,63 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 			continue
 		}
 
+		dlURL := downloadPrefix + "/" + fileName
+		rel := &Release{
+			URL:     dlURL,
+			Version: item.PubDate,
+			Assets: []Asset{
+				{URL: dlURL, Name: fileName},
+			},
+		}
+		s.logger.Debug("sourceforge item listed",
+			"project", s.projectName,
+			"file", fileName,
+			"version", item.PubDate,
+			"reason", "added to list",
+			"result", item.PubDate,
+		)
+		result = append(result, rel)
+		matchIdx++
+	}
+	return result
+}
+
+// List returns all matching releases from Sourceforge RSS.
+func (s *SourceforgeAPI) List(ctx context.Context) ([]*Release, error) {
+	items, err := s.fetchAllItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildReleases(items), nil
+}
+
+// Latest returns the release at the configured index from List.
+func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
+	list, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	downloadPrefix := fmt.Sprintf("https://download.sourceforge.net/%s", s.projectName)
+	index := s.dlCfg.Index
+
+	match := 0
+	for _, item := range list {
 		if match == index {
-			s.version = item.PubDate
-			dlURL := downloadPrefix + "/" + fileName
+			s.version = item.Version
+			dlURL := downloadPrefix + "/" + item.Assets[0].Name
 			s.logger.Info("latest version detected",
 				"project", s.projectName,
-				"version", item.PubDate,
-				"file", fileName,
+				"version", item.Version,
+				"file", item.Assets[0].Name,
 				"reason", "matched sourceforge item at index",
-				"result", item.PubDate,
+				"result", item.Version,
 			)
 			return &Release{
 				URL:     dlURL,
-				Version: item.PubDate,
+				Version: item.Version,
 				Assets: []Asset{
-					{URL: dlURL, Name: fileName},
+					{URL: dlURL, Name: item.Assets[0].Name},
 				},
 			}, nil
 		}
@@ -235,6 +182,59 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		"result", "error",
 	)
 	return nil, fmt.Errorf("no files found in sourceforge rss for %s", s.projectName)
+}
+
+// LatestByVersion finds a specific release by version (pubDate) string using List.
+func (s *SourceforgeAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
+	list, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, rel := range list {
+		s.logger.Debug("sourceforge rollback check",
+			"project", s.projectName,
+			"index", i,
+			"item_version", rel.Version,
+			"target_version", version,
+			"reason", "comparing computed version against target",
+			"result", fmt.Sprintf("match=%v", rel.Version == version),
+		)
+		if rel.Version == version {
+			s.version = rel.Version
+			dlURL := fmt.Sprintf("https://download.sourceforge.net/%s/%s", s.projectName, rel.Assets[0].Name)
+			s.logger.Info("rollback version found",
+				"project", s.projectName,
+				"version", rel.Version,
+				"file", rel.Assets[0].Name,
+				"reason", "target version matched during rollback scan",
+				"result", rel.Version,
+			)
+			return &Release{
+				URL:     dlURL,
+				Version: rel.Version,
+				Assets: []Asset{
+					{URL: dlURL, Name: rel.Assets[0].Name},
+				},
+			}, nil
+		}
+
+		s.logger.Debug("sourceforge rollback version mismatch",
+			"project", s.projectName,
+			"item_version", rel.Version,
+			"target_version", version,
+			"reason", "item pubDate does not match target version",
+			"result", "skip",
+		)
+	}
+
+	s.logger.Error("rollback version not found",
+		"project", s.projectName,
+		"target_version", version,
+		"reason", "no RSS item matched the target version string",
+		"result", "error",
+	)
+	return nil, fmt.Errorf("version %q not found in sourceforge RSS for %s", version, s.projectName)
 }
 
 // sourceforgeFilenameCheck mirrors updater-rpc's FatherApi.filename_check:
