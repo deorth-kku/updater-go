@@ -157,6 +157,15 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Validate that all specified project names exist in config
+	if len(args) > 0 {
+		for _, name := range args {
+			if projectExists(cfg.Projects, name) < 0 {
+				return fmt.Errorf("project %q not found in config", name)
+			}
+		}
+	}
+
 	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
