@@ -205,7 +205,10 @@ func run(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 && !slices.Contains(args, proj.Name) {
 				continue
 			}
-			if !proj.Enabled() {
+			switch {
+			case flagForce:
+			case proj.Enabled():
+			default:
 				continue
 			}
 			if err := metaStore.EnsureLocalConfig(ctx, proj.Name); err != nil {
@@ -241,7 +244,10 @@ func run(cmd *cobra.Command, args []string) error {
 	var anyError bool
 
 	for _, proj := range cfg.Projects {
-		if !proj.Enabled() {
+		switch {
+		case flagForce:
+		case proj.Enabled():
+		default:
 			logger.Debug("project skipped",
 				"name", proj.Name,
 				"reason", "project disabled in config",
@@ -292,7 +298,7 @@ func run(cmd *cobra.Command, args []string) error {
 				logger.Error("update failed", "project", proj.Name, "error", result.Error)
 				anyError = true
 			} else {
-				updateVersionAndHold(cfg, proj.Name, result.NewVersion, result.RolledBack)
+				updateVersionAndHold(cfg, proj.Name, result.NewVersion, result.RolledBack, flagForce)
 				if err := writeJSON(configPath, cfg); err != nil {
 					logger.Error("write config failed", "project", proj.Name, "error", err)
 				}
@@ -333,13 +339,17 @@ func writeJSON(path string, data any) error {
 	return nil
 }
 
-// updateVersionAndHold updates the version and sets hold=true in a single pass.
-func updateVersionAndHold(cfg *config.Config, name, version string, rollback bool) {
+// updateVersionAndHold updates the version and manages the hold flag.
+// When force=true and the update succeeds, hold is cleared so the project
+// will be updated again on the next run.
+func updateVersionAndHold(cfg *config.Config, name, version string, rollback, force bool) {
 	for i, v := range cfg.Projects {
 		if v.Name == name {
 			cfg.Projects[i].Version = version
 			if rollback {
 				cfg.Projects[i].Hold = true
+			} else if force {
+				cfg.Projects[i].Hold = false
 			}
 			break
 		}
