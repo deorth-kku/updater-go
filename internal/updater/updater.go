@@ -405,17 +405,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		}
 	}
 
-	// Step 8: Write .VERSION file (gap #3). Mirrors updater-rpc's
-	// updateVersionFile(): when not using use_exe_version, write the detected
-	// version string to <save_path>/<name>.VERSION.
-	if !u.projectCfg.Version.UseExeVersion {
-		if err := u.updateVersionFile(rel.Version); err != nil {
-			u.log().Warn("write .VERSION file failed",
-				"error", err,
-			)
-		}
-	}
-
 	u.log().Info("update completed",
 		"version", rel.Version,
 		"downloaded", localPath,
@@ -425,25 +414,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	)
 
 	return result
-}
-
-// updateVersionFile writes the detected version to <save_path>/<name>.VERSION,
-// mirroring updater-rpc's updateVersionFile() for non-use_exe_version projects.
-func (u *Updater) updateVersionFile(version string) error {
-	versionFilePath := filepath.Join(u.entry.SavePath, u.projectCfg.Basic.ProjectName+".VERSION")
-	if err := os.MkdirAll(u.entry.SavePath, 0o755); err != nil {
-		return fmt.Errorf("mkdir save path: %w", err)
-	}
-	if err := os.WriteFile(versionFilePath, []byte(version), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", versionFilePath, err)
-	}
-	u.log().Info("version file written",
-		"path", versionFilePath,
-		"version", version,
-		"reason", "use_exe_version is false",
-		"result", "ok",
-	)
-	return nil
 }
 
 // selectDownloadURL picks the best download URL from a release.
