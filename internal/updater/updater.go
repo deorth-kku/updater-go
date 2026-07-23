@@ -118,6 +118,7 @@ func (u *Updater) needUpdateByExe(remote string) (bool, string) {
 		)
 		return true, "failed to read exe version, treat as install"
 	}
+	u.log().Debug("read exe version", "filever", fileVer, "prodver", prodVer)
 	// Mirrors Python: no VS_FIXEDFILEINFO -> install mode (always update).
 	if fileVer == (peversion.Version{}) && prodVer == (peversion.Version{}) {
 		return true, "installed exe has no version resource, treat as install"
