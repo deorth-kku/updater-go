@@ -282,8 +282,8 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
-	if rel.Version != "v3.0.0" {
-		t.Errorf("Version = %q, want %q", rel.Version, "v3.0.0")
+	if rel.Version != "Latest Release" {
+		t.Errorf("Version = %q, want %q", rel.Version, "Latest Release")
 	}
 }
 

@@ -67,19 +67,25 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	}
 
 	if g.noPull {
-		// Single release response
+		// Single release response from /releases/latest
 		var rel githubRelease
 		if err := json.Unmarshal(resp.Body, &rel); err != nil {
 			return nil, fmt.Errorf("parse github release: %w", err)
 		}
+		// Mirror Python: for a single release, use name if non-empty,
+		// otherwise fall back to tag_name.
+		version := rel.Name
+		if version == "" {
+			version = rel.TagName
+		}
 		g.logger.Info("latest version detected",
 			"account", g.accountName,
 			"project", g.projectName,
-			"version", rel.TagName,
+			"version", version,
 			"reason", "parsed single /releases/latest response",
-			"result", rel.TagName,
+			"result", version,
 		)
-		return g.buildRelease(rel), nil
+		return g.buildRelease(rel, version), nil
 	}
 
 	var releases []githubRelease
@@ -96,14 +102,23 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		return nil, fmt.Errorf("no releases found for %s/%s", g.accountName, g.projectName)
 	}
 
+	// Mirror Python: if all release names are identical, this is a single
+	// tag with multiple builds (e.g. pre-release + release), so use tag_name.
+	// If names are unique, use the release name which includes dates/labels.
+	names := make([]string, len(releases))
+	for i, r := range releases {
+		names[i] = r.Name
+	}
+	namesUnique := len(names) == uniqueStrings(names)
+	version := g.selectVersion(releases[0], namesUnique, len(releases))
 	g.logger.Info("latest version detected",
 		"account", g.accountName,
 		"project", g.projectName,
-		"version", releases[0].TagName,
-		"reason", "took first entry from releases list",
-		"result", releases[0].TagName,
+		"version", version,
+		"reason", "took first entry from releases list (names_unique="+fmt.Sprint(namesUnique)+")",
+		"result", version,
 	)
-	return g.buildRelease(releases[0]), nil
+	return g.buildRelease(releases[0], version), nil
 }
 
 type githubRelease struct {
@@ -117,9 +132,30 @@ type githubAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-func (g *GitHubAPI) buildRelease(rel githubRelease) *Release {
-	version := rel.TagName
+// selectVersion mirrors Python's logic: if there are multiple releases and
+// their names are not all identical (i.e. at least two distinct names exist),
+// use the release name as the version. Otherwise fall back to tag_name.
+// Single releases always use tag_name (stable identifier).
+// This handles the case where the same tag is rebuilt multiple times —
+// all releases share the same name, so we use tag_name to avoid false
+// version drift (e.g. "v0.38.0 - June 3rd, 2026" vs stored "v0.38.0").
+func (g *GitHubAPI) selectVersion(rel githubRelease, namesUnique bool, totalReleases int) string {
+	if totalReleases > 1 && namesUnique && len(rel.Name) > 0 {
+		return rel.Name
+	}
+	return rel.TagName
+}
 
+// uniqueStrings returns the number of distinct strings in s.
+func uniqueStrings(s []string) int {
+	seen := make(map[string]struct{}, len(s))
+	for _, v := range s {
+		seen[v] = struct{}{}
+	}
+	return len(seen)
+}
+
+func (g *GitHubAPI) buildRelease(rel githubRelease, version string) *Release {
 	r := &Release{Version: version}
 	for _, a := range rel.Assets {
 		r.Assets = append(r.Assets, Asset{
