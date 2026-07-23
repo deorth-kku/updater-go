@@ -96,7 +96,6 @@ func (u *Updater) needUpdateByExe(remote string) (bool, string) {
 	fileVer, prodVer, err := peversion.FileVersion(exepath)
 	if err != nil {
 		u.log().Warn("read exe version failed",
-			"project", u.projectCfg.Basic.ProjectName,
 			"path", exepath,
 			"error", err,
 			"reason", "fall back to install mode",
@@ -124,7 +123,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		return result
 	}
 	u.log().Info("api backend selected",
-		"project", result.ProjectName,
 		"api_type", u.projectCfg.Basic.APIType,
 		"reason", "backend chosen from config api_type",
 		"result", "ok",
@@ -137,7 +135,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	}
 	result.NewVersion = rel.Version
 	u.log().Debug("latest version detected",
-		"project", result.ProjectName,
 		"version", rel.Version,
 		"assets", len(rel.Assets),
 		"reason", "queried backend Latest",
@@ -152,7 +149,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	// fall into the version-specific checks.
 	if u.force {
 		u.log().Info("update needed",
-			"project", result.ProjectName,
 			"old_version", result.OldVersion,
 			"new_version", rel.Version,
 			"force", u.force,
@@ -170,7 +166,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		need, reason := u.needUpdateByExe(rel.Version)
 		if !need {
 			u.log().Info("no update needed",
-				"project", result.ProjectName,
 				"version", rel.Version,
 				"reason", reason,
 				"result", "skip",
@@ -178,7 +173,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			return result
 		}
 		u.log().Info("update needed",
-			"project", result.ProjectName,
 			"old_version", result.OldVersion,
 			"new_version", rel.Version,
 			"force", u.force,
@@ -188,7 +182,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	} else { // generic comparison
 		if rel.Version == result.OldVersion {
 			u.log().Info("no update needed",
-				"project", result.ProjectName,
 				"version", rel.Version,
 				"reason", "detected version equals installed version and force is off",
 				"result", "skip",
@@ -196,7 +189,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			return result
 		}
 		u.log().Info("update needed",
-			"project", result.ProjectName,
 			"old_version", result.OldVersion,
 			"new_version", rel.Version,
 			"force", u.force,
@@ -216,7 +208,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	filename := u.downloadFilename(rel.Version, dlURL)
 	saveDir := filepath.Join(u.entry.SavePath, u.entry.Name)
 	u.log().Info("starting download",
-		"project", result.ProjectName,
 		"url", dlURL,
 		"filename", filename,
 		"save_dir", saveDir,
@@ -230,7 +221,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	}
 	result.Downloaded = localPath
 	u.log().Info("download finished",
-		"project", result.ProjectName,
 		"path", localPath,
 		"reason", "downloader reported completion",
 		"result", localPath,
@@ -252,13 +242,11 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			u.log().Warn(msg)
 			if err := ctrl.PopupMsg("Updater", msg); err != nil {
 				u.log().Warn("popup message failed",
-					"project", result.ProjectName,
 					"error", err,
 				)
 			}
 			if err := ctrl.WaitForStop(ctx, 5*time.Minute); err != nil {
 				u.log().Warn("timed out waiting for process to stop",
-					"project", result.ProjectName,
 					"image", imageName,
 					"error", err,
 				)
@@ -269,7 +257,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	// Step 5: Extract
 	if !u.projectCfg.Decompress.Skip.Bool() {
 		u.log().Info("extracting archive",
-			"project", result.ProjectName,
 			"path", localPath,
 			"reason", "decompress not skipped",
 			"result", "begin",
@@ -287,7 +274,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		ex.Close()
 		result.Extracted = true
 		u.log().Info("extraction finished",
-			"project", result.ProjectName,
 			"save_path", u.entry.SavePath,
 			"reason", "archive extracted to save path",
 			"result", "ok",
@@ -297,7 +283,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		if !u.projectCfg.Decompress.KeepDownloadFile {
 			if err := os.Remove(localPath); err != nil {
 				u.log().Warn("failed to remove download file",
-					"project", result.ProjectName,
 					"path", localPath,
 					"error", err,
 					"reason", "keep_download_file is false",
@@ -305,7 +290,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 				)
 			} else {
 				u.log().Debug("removed download file",
-					"project", result.ProjectName,
 					"path", localPath,
 					"reason", "keep_download_file is false",
 					"result", "removed",
@@ -314,7 +298,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		}
 	} else {
 		u.log().Info("extraction skipped",
-			"project", result.ProjectName,
 			"reason", "decompress.skip enabled",
 			"result", "skip",
 		)
@@ -340,12 +323,11 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		// Stop process
 		stopped, err := ctrl.Stop(ctx)
 		if err != nil {
-			u.log().Warn("stop failed", "project", result.ProjectName, "error", err)
+			u.log().Warn("stop failed", "error", err)
 			return result
 		}
 		if !stopped {
 			u.log().Info("no process running, skip start",
-				"project", result.ProjectName,
 				"image", imageName,
 				"reason", "stop found nothing to stop",
 				"result", "skip start",
@@ -355,7 +337,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 
 		// Start process
 		if err := ctrl.Start(ctx); err != nil {
-			u.log().Warn("start failed", "project", result.ProjectName, "error", err)
+			u.log().Warn("start failed", "error", err)
 		}
 	}
 
@@ -369,7 +351,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	for _, line := range postCmds {
 		replaced := replaceVars(line, u.entry.SavePath, result.ProjectName, localPath, rel.Version)
 		u.log().Info("running post-cmd",
-			"project", result.ProjectName,
 			"cmd", replaced,
 			"reason", "post-update command configured",
 			"result", "begin",
@@ -386,7 +367,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		cmdObj.Stdout = nil
 		cmdObj.Stderr = nil
 		if err := cmdObj.Run(); err != nil {
-			u.log().Warn("post-cmd failed", "project", result.ProjectName, "error", err)
+			u.log().Warn("post-cmd failed", "error", err)
 		}
 	}
 
@@ -396,14 +377,12 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	if !u.projectCfg.Version.UseExeVersion {
 		if err := u.updateVersionFile(rel.Version); err != nil {
 			u.log().Warn("write .VERSION file failed",
-				"project", result.ProjectName,
 				"error", err,
 			)
 		}
 	}
 
 	u.log().Info("update completed",
-		"project", result.ProjectName,
 		"version", rel.Version,
 		"downloaded", localPath,
 		"extracted", result.Extracted,
@@ -425,7 +404,6 @@ func (u *Updater) updateVersionFile(version string) error {
 		return fmt.Errorf("write %s: %w", versionFilePath, err)
 	}
 	u.log().Info("version file written",
-		"project", u.projectCfg.Basic.ProjectName,
 		"path", versionFilePath,
 		"version", version,
 		"reason", "use_exe_version is false",
@@ -442,7 +420,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		// %VER which must be expanded to the detected version.
 		url := strings.ReplaceAll(u.projectCfg.Download.URL, "%VER", rel.Version)
 		u.log().Info("download URL selected",
-			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "direct download.url configured, overrides asset matching",
 			"result", url,
 		)
@@ -454,7 +431,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(assetNames(rel.Assets))
 		u.log().Debug("assets matched",
-			"project", u.projectCfg.Basic.ProjectName,
 			"total", len(rel.Assets),
 			"matched", len(matched),
 			"reason", "file selector filtered release assets",
@@ -463,7 +439,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		// Apply index/indexes filtering
 		matched = u.applyIndex(matched)
 		u.log().Debug("index applied",
-			"project", u.projectCfg.Basic.ProjectName,
 			"index", u.projectCfg.Download.Index,
 			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
 			"reason", "matched assets filtered by download.index/indexes",
@@ -473,7 +448,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 			for _, a := range rel.Assets {
 				if a.Name == name {
 					u.log().Info("download URL selected",
-						"project", u.projectCfg.Basic.ProjectName,
 						"asset", name,
 						"reason", "matched asset chosen for download",
 						"result", a.URL,
@@ -489,7 +463,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
 		matched := fs.SelectFiles(artifactNames(rel.Artifacts))
 		u.log().Debug("artifacts matched",
-			"project", u.projectCfg.Basic.ProjectName,
 			"total", len(rel.Artifacts),
 			"matched", len(matched),
 			"reason", "file selector filtered appveyor artifacts",
@@ -497,7 +470,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		)
 		matched = u.applyIndex(matched)
 		u.log().Debug("index applied",
-			"project", u.projectCfg.Basic.ProjectName,
 			"index", u.projectCfg.Download.Index,
 			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
 			"reason", "matched artifacts filtered by download.index/indexes",
@@ -508,7 +480,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 				if art.FileName == name {
 					url := rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + art.FileName
 					u.log().Info("download URL selected",
-						"project", u.projectCfg.Basic.ProjectName,
 						"artifact", name,
 						"reason", "matched appveyor artifact chosen for download",
 						"result", url,
@@ -522,7 +493,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 	// Fallback to the release URL
 	if rel.URL != "" {
 		u.log().Warn("download URL fallback",
-			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "no asset/artifact matched, using release URL as last resort",
 			"result", rel.URL,
 		)
@@ -530,7 +500,6 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 	}
 
 	u.log().Warn("no download URL selected",
-		"project", u.projectCfg.Basic.ProjectName,
 		"reason", "no direct url, no matched asset/artifact, and no release url",
 		"result", "",
 	)
@@ -613,7 +582,6 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 			name = addVersionToName(name, version, u.projectCfg.Download.Filetype)
 		}
 		u.log().Debug("download filename resolved",
-			"project", u.projectCfg.Basic.ProjectName,
 			"reason", "filename_override configured (version/arch/os substituted)",
 			"result", name,
 		)
@@ -628,7 +596,6 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 		name = addVersionToName(name, version, u.projectCfg.Download.Filetype)
 	}
 	u.log().Debug("download filename resolved",
-		"project", u.projectCfg.Basic.ProjectName,
 		"reason", "no override, derived from last URL path segment",
 		"result", name,
 	)
