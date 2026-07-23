@@ -79,7 +79,7 @@ func fileVersionFromPE(f *pe.File) (fileVer, prodVer Version, err error) {
 	// Offset of the resource directory within the raw section bytes.
 	base := int(dd.VirtualAddress) - int(section.VirtualAddress)
 
-	fv, pv, found, e := walkResourceDir(data, base, base, int(dd.Size), 0)
+	fv, pv, found, e := walkResourceDir(data, base, base, int(section.VirtualAddress), int(dd.Size), 0)
 	if e != nil {
 		return Version{}, Version{}, e
 	}
@@ -125,13 +125,18 @@ func findSectionByRVA(f *pe.File, rva uint32) *pe.Section {
 // reaches a leaf (data entry) whose raw bytes contain a VS_VERSION_INFO
 // signature, it parses and returns the VS_FIXEDFILEINFO.
 //
-// dirBase  = raw offset of the current IMAGE_RESOURCE_DIRECTORY header.
-// rootBase = raw offset of the resource root; all offsets stored in entries
+// dirBase   = raw offset of the current IMAGE_RESOURCE_DIRECTORY header.
+// rootBase  = raw offset of the resource root; all offsets stored in entries
 //
 //	(both directory and leaf) are relative to this root.
 //
+// sectionVA = VirtualAddress of the .rsrc section; used to convert the leaf
+//
+//	IMAGE_RESOURCE_DATA_ENTRY.OffsetToData (an image-relative RVA) back
+//	into a raw byte offset within the section slice.
+//
 // The bool reports whether a version resource was found.
-func walkResourceDir(data []byte, dirBase, rootBase, size, depth int) (Version, Version, bool, error) {
+func walkResourceDir(data []byte, dirBase, rootBase, sectionVA, size, depth int) (Version, Version, bool, error) {
 	if depth > 8 || dirBase < 0 || dirBase+16 > len(data) {
 		return Version{}, Version{}, false, nil
 	}
@@ -154,7 +159,7 @@ func walkResourceDir(data []byte, dirBase, rootBase, size, depth int) (Version, 
 		if dataIsDir {
 			// Descend into the subdirectory; its header lives at
 			// rootBase + subdirOffset.
-			fv, pv, found, err := walkResourceDir(data, rootBase+int(offsetToData&0x7FFFFFFF), rootBase, size, depth+1)
+			fv, pv, found, err := walkResourceDir(data, rootBase+int(offsetToData&0x7FFFFFFF), rootBase, sectionVA, size, depth+1)
 			if err != nil {
 				return Version{}, Version{}, false, err
 			}
@@ -164,10 +169,17 @@ func walkResourceDir(data []byte, dirBase, rootBase, size, depth int) (Version, 
 			continue
 		}
 
-		// Leaf (data entry). The entry id here is a language id (e.g. 1033),
-		// not the RT_VERSION type, so we detect the VS_VERSION_INFO signature
-		// directly at the data offset (root-relative).
-		fv, pv, err := parseFixedFileInfo(data, rootBase+int(offsetToData&0x7FFFFFFF))
+		// Leaf: offsetToData (root-relative) points to an
+		// IMAGE_RESOURCE_DATA_ENTRY structure whose first field,
+		// OffsetToData, is an image-relative RVA — not a raw section offset.
+		// Subtract sectionVA to get the actual byte offset within data[].
+		dataEntryOff := rootBase + int(offsetToData&0x7FFFFFFF)
+		if dataEntryOff+4 > len(data) {
+			continue
+		}
+		dataRVA := int(binary.LittleEndian.Uint32(data[dataEntryOff:]))
+		rawOff := dataRVA - sectionVA
+		fv, pv, err := parseFixedFileInfo(data, rawOff)
 		if err != nil {
 			return Version{}, Version{}, false, err
 		}
