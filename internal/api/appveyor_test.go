@@ -63,10 +63,7 @@ func TestFindJobID(t *testing.T) {
 // TestAppveyorAPI_LatestByVersion_Match tests rollback version matching.
 func TestAppveyorAPI_LatestByVersion_Match(t *testing.T) {
 	history := appveyorHistory{
-		Builds: []struct {
-			Version       string `json:"version"`
-			PullRequestID string `json:"pullRequestId"`
-		}{
+		Builds: []appveyorBuild{
 			{Version: "1.0.0", PullRequestID: ""},
 			{Version: "1.0.1", PullRequestID: ""},
 			{Version: "1.0.2", PullRequestID: ""},
@@ -114,10 +111,7 @@ func TestAppveyorAPI_LatestByVersion_Match(t *testing.T) {
 // when the target version is not found.
 func TestAppveyorAPI_LatestByVersion_NotFound(t *testing.T) {
 	history := appveyorHistory{
-		Builds: []struct {
-			Version       string `json:"version"`
-			PullRequestID string `json:"pullRequestId"`
-		}{
+		Builds: []appveyorBuild{
 			{Version: "1.0.0", PullRequestID: ""},
 			{Version: "1.0.1", PullRequestID: ""},
 		},

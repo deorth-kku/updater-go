@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ type AppveyorAPI struct {
 	accountName string
 	projectName string
 	branch      string
+	noPull      bool
 	downloader  Downloader
 	logger      *slog.Logger
 }
@@ -26,9 +29,15 @@ func NewAppveyorAPI(cfg config.BasicConfig, dl Downloader, logger *slog.Logger) 
 		accountName: cfg.AccountName,
 		projectName: cfg.ProjectName,
 		branch:      "",
+		noPull:      false,
 		downloader:  dl,
 		logger:      logger,
 	}
+}
+
+// SetNoPull sets whether to skip PR-triggered builds.
+func (a *AppveyorAPI) SetNoPull(noPull bool) {
+	a.noPull = noPull
 }
 
 // SetBranch sets the build branch for filtering.
@@ -67,104 +76,112 @@ func (a *AppveyorAPI) fetchAllBuilds(ctx context.Context) (appveyorHistory, erro
 	return history, nil
 }
 
+func (a *AppveyorAPI) filterBuilds(builds []appveyorBuild) iter.Seq2[int, appveyorBuild] {
+	return func(yield func(int, appveyorBuild) bool) {
+		for i, build := range builds {
+			if a.noPull && build.PullRequestID != "" {
+				a.logger.Debug("appveyor build skipped",
+					"account", a.accountName,
+					"project", a.projectName,
+					"version", build.Version,
+					"reason", "build is PR-triggered and no_pull is enabled, excluded",
+					"result", "skip",
+				)
+				continue
+			}
+			if !yield(i, build) {
+				return
+			}
+		}
+	}
+}
+
 // buildReleases fetches detail and artifacts for each non-PR build and
 // returns a *Release for each one. Builds without artifacts older than 30
 // days are skipped.
-func (a *AppveyorAPI) buildReleases(history appveyorHistory) []*Release {
-	baseURL := "https://ci.appveyor.com/api"
+func (a *AppveyorAPI) buildReleases(ctx context.Context, history appveyorHistory) []*Release {
 	var result []*Release
 
-	for _, build := range history.Builds {
-		if build.PullRequestID != "" {
+	for _, build := range a.filterBuilds(history.Builds) {
+		rel, err := a.fetchBuildDetail(ctx, build)
+		if err != nil {
 			a.logger.Debug("appveyor build skipped",
 				"account", a.accountName,
 				"project", a.projectName,
 				"version", build.Version,
-				"reason", "build is PR-triggered, excluded",
+				"reason", fmt.Sprintf("fetchBuildDetail failed: %v", err),
 				"result", "skip",
 			)
 			continue
 		}
 
-		version := build.Version
-		buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
-			baseURL, a.accountName, a.projectName, version)
-		buildResp, err := a.downloader.Get(context.Background(), buildURL, nil)
-		if err != nil {
-			continue
-		}
-
-		var buildDetail appveyorBuildDetail
-		if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
-			continue
-		}
-
-		jobID := findJobID(buildDetail.Build.Jobs)
-		if jobID == "" {
-			a.logger.Debug("appveyor build skipped",
-				"account", a.accountName,
-				"project", a.projectName,
-				"version", version,
-				"reason", "no suitable job id found in build",
-				"result", "skip",
-			)
-			continue
-		}
-
-		artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
-		artResp, err := a.downloader.Get(context.Background(), artifactsURL, nil)
-		if err != nil {
-			continue
-		}
-
-		var artifacts []AppveyorArtifact
-		if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
-			continue
-		}
-
-		if len(artifacts) == 0 {
-			updated := buildDetail.Build.Updated
-			if updated != "" {
-				dt, err := time.Parse("2006-01-02T15:04:05", updated)
-				if err == nil && time.Since(dt) > 30*24*time.Hour {
-					a.logger.Debug("appveyor build skipped",
-						"account", a.accountName,
-						"project", a.projectName,
-						"version", version,
-						"reason", "no artifacts and build older than 30 days",
-						"result", "skip",
-					)
-					continue
-				}
-			}
-			a.logger.Debug("appveyor build skipped",
-				"account", a.accountName,
-				"project", a.projectName,
-				"version", version,
-				"reason", "no artifacts and no/old timestamp",
-				"result", "skip",
-			)
-			continue
-		}
-
-		rel := &Release{
-			Version:   version,
-			Artifacts: artifacts,
-			JobID:     jobID,
-			BaseURL:   baseURL,
-		}
 		a.logger.Debug("appveyor build listed",
 			"account", a.accountName,
 			"project", a.projectName,
-			"version", version,
-			"job_id", jobID,
-			"artifacts", len(artifacts),
+			"version", rel.Version,
+			"job_id", rel.JobID,
+			"artifacts", len(rel.Artifacts),
 			"reason", "added to list",
-			"result", version,
+			"result", rel.Version,
 		)
 		result = append(result, rel)
 	}
 	return result
+}
+
+var errHttpFailed = errors.New("appveyor build detail http failed: ")
+
+// fetchBuildDetail fetches detail and artifacts for a single build.
+// Returns a *Release or an error if the build has no artifacts.
+func (a *AppveyorAPI) fetchBuildDetail(ctx context.Context, build appveyorBuild) (*Release, error) {
+	baseURL := "https://ci.appveyor.com/api"
+	version := build.Version
+
+	buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
+		baseURL, a.accountName, a.projectName, version)
+	buildResp, err := a.downloader.Get(ctx, buildURL, nil)
+	if err != nil {
+		return nil, errors.Join(errHttpFailed, err)
+	}
+
+	var buildDetail appveyorBuildDetail
+	if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
+		return nil, fmt.Errorf("parse appveyor build detail: %w", err)
+	}
+
+	jobID := findJobID(buildDetail.Build.Jobs)
+	if jobID == "" {
+		return nil, fmt.Errorf("no suitable job id found for build %s", version)
+	}
+
+	artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
+	artResp, err := a.downloader.Get(ctx, artifactsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("appveyor artifacts: %w", err)
+	}
+
+	var artifacts []AppveyorArtifact
+	if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
+		return nil, fmt.Errorf("parse appveyor artifacts: %w", err)
+	}
+
+	if len(artifacts) == 0 {
+		updated := buildDetail.Build.Updated
+		if updated != "" {
+			dt, err := time.Parse("2006-01-02T15:04:05", updated)
+			if err == nil && time.Since(dt) > 30*24*time.Hour {
+				return nil, fmt.Errorf("build %s has no artifacts and is older than 30 days", version)
+			}
+		}
+		return nil, fmt.Errorf("build %s has no artifacts", version)
+	}
+
+	return &Release{
+		Version:   version,
+		Artifacts: artifacts,
+		JobID:     jobID,
+		BaseURL:   baseURL,
+	}, nil
 }
 
 // List returns all builds from AppVeyor.
@@ -173,54 +190,75 @@ func (a *AppveyorAPI) List(ctx context.Context) ([]*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a.buildReleases(history), nil
+	return a.buildReleases(ctx, history), nil
 }
 
-// Latest returns the first build from List.
+// Latest returns the first non-PR build with artifacts.
 func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
-	list, err := a.List(ctx)
+	history, err := a.fetchAllBuilds(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(list) == 0 {
-		a.logger.Error("no appveyor build found",
+
+	for _, build := range a.filterBuilds(history.Builds) {
+		rel, err := a.fetchBuildDetail(ctx, build)
+		if errors.Is(err, errHttpFailed) {
+			return nil, err
+		} else if err != nil {
+			a.logger.Debug("appveyor build skipped",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", build.Version,
+				"reason", err,
+				"result", "skip",
+			)
+			continue
+		}
+		a.logger.Info("latest version detected",
 			"account", a.accountName,
 			"project", a.projectName,
-			"reason", "List returned empty",
-			"result", "error",
+			"version", rel.Version,
+			"job_id", rel.JobID,
+			"artifacts", len(rel.Artifacts),
+			"reason", "first non-PR build with artifacts found",
+			"result", rel.Version,
 		)
-		return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
+		return rel, nil
 	}
-	a.logger.Info("latest version detected",
+
+	a.logger.Error("no appveyor build found",
 		"account", a.accountName,
 		"project", a.projectName,
-		"version", list[0].Version,
-		"job_id", list[0].JobID,
-		"artifacts", len(list[0].Artifacts),
-		"reason", "took first entry from List",
-		"result", list[0].Version,
+		"reason", "no build with artifacts found after filtering",
+		"result", "error",
 	)
-	return list[0], nil
+	return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
 }
 
-// LatestByVersion finds a specific build by version string using List.
+// LatestByVersion finds a specific build by version string.
+// Only fetches artifacts for the matching build.
 func (a *AppveyorAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
-	list, err := a.List(ctx)
+	history, err := a.fetchAllBuilds(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for i, rel := range list {
+	for i, build := range a.filterBuilds(history.Builds) {
 		a.logger.Debug("appveyor rollback check",
 			"account", a.accountName,
 			"project", a.projectName,
 			"index", i,
-			"build_version", rel.Version,
+			"build_version", build.Version,
 			"target_version", version,
 			"reason", "comparing computed version against target",
-			"result", fmt.Sprintf("match=%v", rel.Version == version),
+			"result", fmt.Sprintf("match=%v", build.Version == version),
 		)
-		if rel.Version == version {
+
+		if build.Version == version {
+			rel, err := a.fetchBuildDetail(ctx, build)
+			if err != nil {
+				return nil, err
+			}
 			a.logger.Info("rollback version detected",
 				"account", a.accountName,
 				"project", a.projectName,
@@ -262,11 +300,13 @@ func findJobID(jobs []appveyorJob) string {
 
 // --- AppVeyor API types ---
 
+type appveyorBuild struct {
+	Version       string `json:"version"`
+	PullRequestID string `json:"pullRequestId"`
+}
+
 type appveyorHistory struct {
-	Builds []struct {
-		Version       string `json:"version"`
-		PullRequestID string `json:"pullRequestId"`
-	} `json:"builds"`
+	Builds []appveyorBuild `json:"builds"`
 }
 
 type appveyorBuildDetail struct {

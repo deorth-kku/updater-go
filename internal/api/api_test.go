@@ -220,10 +220,7 @@ func TestFilterAssets(t *testing.T) {
 
 func TestAppveyorAPI_Latest(t *testing.T) {
 	history := appveyorHistory{
-		Builds: []struct {
-			Version       string `json:"version"`
-			PullRequestID string `json:"pullRequestId"`
-		}{
+		Builds: []appveyorBuild{
 			{Version: "1.0.0", PullRequestID: "pr-1"},
 			{Version: "1.0.1", PullRequestID: ""},
 		},
@@ -405,10 +402,7 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 
 func TestAppveyorAPI_BranchFilter(t *testing.T) {
 	history := appveyorHistory{
-		Builds: []struct {
-			Version       string `json:"version"`
-			PullRequestID string `json:"pullRequestId"`
-		}{
+		Builds: []appveyorBuild{
 			{Version: "1.0.0", PullRequestID: ""},
 		},
 	}

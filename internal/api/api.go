@@ -49,6 +49,7 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 	case "appveyor":
 		api := NewAppveyorAPI(cfg, dl, logger)
 		api.SetBranch(buildCfg.Branch)
+		api.SetNoPull(buildCfg.NoPull)
 		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "appveyor",
