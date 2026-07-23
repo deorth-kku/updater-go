@@ -59,7 +59,7 @@ func (s *Store) Load(ctx context.Context) error {
 		}
 		metaURL += "metadata.json"
 
-		resp, err := s.httpDL.Get(ctx, metaURL)
+		resp, err := s.httpDL.Get(ctx, metaURL, nil)
 		if err != nil {
 			fmt.Printf("getting metadata from repo %s failed, cause: %s .skipping\n", repoURL, err)
 			continue
@@ -157,7 +157,7 @@ func (s *Store) EnsureLocalConfig(ctx context.Context, name string) error {
 
 // downloadConfig downloads a config file from remote and saves it locally.
 func (s *Store) downloadConfig(ctx context.Context, entry Entry, localPath string) error {
-	resp, err := s.httpDL.Get(ctx, entry.URL)
+	resp, err := s.httpDL.Get(ctx, entry.URL, nil)
 	if err != nil {
 		return fmt.Errorf("download config for %s: %w", entry.URL, err)
 	}

@@ -36,7 +36,7 @@ func (a *ApiJsonAPI) fetchJSON(ctx context.Context) error {
 		return nil
 	}
 
-	resp, err := a.downloader.Get(ctx, a.apiURL)
+	resp, err := a.downloader.Get(ctx, a.apiURL, nil)
 	if err != nil {
 		return fmt.Errorf("apijson fetch: %w", err)
 	}

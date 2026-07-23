@@ -1,11 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -151,70 +149,35 @@ func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string, 
 }
 
 func (s *SimpleSpiderAPI) fetchPage(ctx context.Context) (string, error) {
-	var bodyReader io.Reader
-
 	// If Data is configured, use POST with JSON body
 	if len(s.dlCfg.Data) > 0 {
 		jsonBody, err := json.Marshal(s.dlCfg.Data)
 		if err != nil {
 			return "", fmt.Errorf("marshal data: %w", err)
 		}
-		bodyReader = bytes.NewReader(jsonBody)
-	}
-
-	var req *http.Request
-	var reqErr error
-	if bodyReader != nil {
-		req, reqErr = http.NewRequestWithContext(ctx, http.MethodPost, s.pageURL, bodyReader)
-		if reqErr != nil {
-			return "", reqErr
+		resp, err := s.downloader.Post(ctx, s.pageURL, jsonBody, s.headers)
+		if err != nil {
+			return "", fmt.Errorf("simplespider fetch page: %w", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
-	} else {
-		req, reqErr = http.NewRequestWithContext(ctx, http.MethodGet, s.pageURL, nil)
-		if reqErr != nil {
-			return "", reqErr
-		}
+		return string(resp.Body), nil
 	}
 
-	for k, v := range s.headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.downloader.Get(ctx, s.pageURL, s.headers)
 	if err != nil {
 		return "", fmt.Errorf("simplespider fetch page: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return string(resp.Body), nil
 }
 
 // fetchURL performs a GET (with the configured headers) on an arbitrary URL
 // and returns the response body as a string. Used to fetch the content of
 // each resolved URL in a multi-level simplespider chain.
 func (s *SimpleSpiderAPI) fetchURL(ctx context.Context, rawURL string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return "", err
-	}
-	for k, v := range s.headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.downloader.Get(ctx, rawURL, s.headers)
 	if err != nil {
 		return "", fmt.Errorf("simplespider fetch %s: %w", rawURL, err)
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return string(resp.Body), nil
 }
 
 func (s *SimpleSpiderAPI) extractURLFromPage(ctx context.Context, page string) (string, error) {

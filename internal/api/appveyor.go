@@ -54,7 +54,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		"result", historyURL,
 	)
 
-	resp, err := a.downloader.Get(ctx, historyURL)
+	resp, err := a.downloader.Get(ctx, historyURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("appveyor history: %w", err)
 	}
@@ -80,7 +80,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		version := build.Version
 		buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
 			baseURL, a.accountName, a.projectName, version)
-		buildResp, err := a.downloader.Get(ctx, buildURL)
+		buildResp, err := a.downloader.Get(ctx, buildURL, nil)
 		if err != nil {
 			continue
 		}
@@ -103,7 +103,7 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 		}
 
 		artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
-		artResp, err := a.downloader.Get(ctx, artifactsURL)
+		artResp, err := a.downloader.Get(ctx, artifactsURL, nil)
 		if err != nil {
 			continue
 		}

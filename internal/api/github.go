@@ -51,7 +51,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		"result", url,
 	)
 
-	resp, err := g.downloader.Get(ctx, url)
+	resp, err := g.downloader.Get(ctx, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("github releases: %w", err)
 	}

@@ -24,7 +24,7 @@ func (m *mockDownloader) On(path string, resp *HTTPResponse) {
 	m.handlers[path] = resp
 }
 
-func (m *mockDownloader) Get(_ context.Context, url string) (*HTTPResponse, error) {
+func (m *mockDownloader) Get(_ context.Context, url string, _ map[string]string) (*HTTPResponse, error) {
 	path := url
 	if _, after, ok := strings.Cut(url, "://"); ok {
 		path = after
@@ -39,6 +39,10 @@ func (m *mockDownloader) Get(_ context.Context, url string) (*HTTPResponse, erro
 		return resp, nil
 	}
 	return &HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
+}
+
+func (m *mockDownloader) Post(_ context.Context, url string, _ []byte, _ map[string]string) (*HTTPResponse, error) {
+	return m.Get(context.Background(), url, nil)
 }
 
 func TestGitHubAPI_Latest(t *testing.T) {

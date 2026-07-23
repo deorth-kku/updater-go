@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/deorth-kku/updater-go/internal/config"
 )
@@ -266,7 +267,8 @@ func TestExtractURLFromPage_PerLevelIndexes(t *testing.T) {
 			Regexes: []string{`href="([^"]+)"`, `href="([^"]+)"`},
 			Indexes: []int{0, 0},
 		},
-		verCfg: config.VersionConfig{},
+		verCfg:     config.VersionConfig{},
+		downloader: NewHTTPClient(time.Second),
 	}
 	got, err := s.extractURLFromPage(t.Context(), page)
 	if err != nil {

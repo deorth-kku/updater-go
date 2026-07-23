@@ -26,7 +26,7 @@ func TestHTTPClient_RetryOnTransientError(t *testing.T) {
 
 	// retry=5 => up to 6 attempts; first 2 fail, 3rd succeeds.
 	c := NewHTTPClientWithProxy(2*time.Second, "", 5)
-	resp, err := c.Get(t.Context(), srv.URL)
+	resp, err := c.Get(t.Context(), srv.URL, nil)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -53,7 +53,7 @@ func TestHTTPClient_RetryExhausted(t *testing.T) {
 	defer srv.Close()
 
 	c := NewHTTPClientWithProxy(2*time.Second, "", 2) // 3 attempts total
-	_, err := c.Get(t.Context(), srv.URL)
+	_, err := c.Get(t.Context(), srv.URL, nil)
 	if err == nil {
 		t.Fatal("Get() should return error after exhausting retries")
 	}
@@ -73,7 +73,7 @@ func TestHTTPClient_NoRetryOnSuccess(t *testing.T) {
 	defer srv.Close()
 
 	c := NewHTTPClientWithProxy(2*time.Second, "", 5)
-	resp, err := c.Get(t.Context(), srv.URL)
+	resp, err := c.Get(t.Context(), srv.URL, nil)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}

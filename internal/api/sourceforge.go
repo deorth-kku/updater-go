@@ -60,7 +60,7 @@ func (s *SourceforgeAPI) Latest(ctx context.Context) (*Release, error) {
 		"reason", "fetch project RSS feed",
 		"result", rssURL,
 	)
-	resp, err := s.downloader.Get(ctx, rssURL)
+	resp, err := s.downloader.Get(ctx, rssURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("sourceforge rss: %w", err)
 	}

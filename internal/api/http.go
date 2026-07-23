@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,7 +14,9 @@ import (
 // Downloader is the interface for fetching remote data (HTML, JSON, RSS).
 type Downloader interface {
 	// Get performs an HTTP GET and returns the response.
-	Get(ctx context.Context, url string) (*HTTPResponse, error)
+	Get(ctx context.Context, url string, headers map[string]string) (*HTTPResponse, error)
+	// Post performs an HTTP POST with the given body and returns the response.
+	Post(ctx context.Context, url string, body []byte, headers map[string]string) (*HTTPResponse, error)
 }
 
 // HTTPResponse represents an HTTP response.
@@ -90,7 +93,7 @@ func parseProxyURL(raw string) *url.URL {
 	return u
 }
 
-func (h *httpClient) Get(ctx context.Context, url string) (*HTTPResponse, error) {
+func (h *httpClient) Get(ctx context.Context, url string, headers map[string]string) (*HTTPResponse, error) {
 	var lastErr error
 	attempts := h.retry + 1
 	if attempts < 1 {
@@ -116,6 +119,9 @@ func (h *httpClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
 		}
 		resp, err := h.client.Do(req)
 		if err != nil {
@@ -144,6 +150,74 @@ func (h *httpClient) Get(ctx context.Context, url string) (*HTTPResponse, error)
 		return &HTTPResponse{
 			StatusCode: resp.StatusCode,
 			Body:       body,
+			Header:     resp.Header,
+		}, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("request failed after %d attempts", attempts)
+	}
+	return nil, lastErr
+}
+
+// Post performs an HTTP POST with the given body and returns the response.
+// It reuses the same retry logic as Get.
+func (h *httpClient) Post(ctx context.Context, rawURL string, body []byte, headers map[string]string) (*HTTPResponse, error) {
+	var lastErr error
+	attempts := h.retry + 1
+	if attempts < 1 {
+		attempts = 1
+	}
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			backoff := 200 * time.Millisecond
+			for i := 1; i < attempt; i++ {
+				backoff *= 2
+			}
+			if backoff > 2*time.Second {
+				backoff = 2 * time.Second
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := h.client.Do(req)
+		if err != nil {
+			lastErr = err
+			if !shouldRetry(nil, err) {
+				return nil, err
+			}
+			continue
+		}
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			if !shouldRetry(nil, readErr) {
+				return nil, readErr
+			}
+			continue
+		}
+
+		if shouldRetry(resp, nil) {
+			lastErr = fmt.Errorf("retryable status %d", resp.StatusCode)
+			continue
+		}
+
+		return &HTTPResponse{
+			StatusCode: resp.StatusCode,
+			Body:       respBody,
 			Header:     resp.Header,
 		}, nil
 	}

@@ -23,11 +23,15 @@ func (m *mockHTTPDownloader) On(url string, resp *api.HTTPResponse) {
 	m.responses[url] = resp
 }
 
-func (m *mockHTTPDownloader) Get(_ context.Context, url string) (*api.HTTPResponse, error) {
+func (m *mockHTTPDownloader) Get(_ context.Context, url string, _ map[string]string) (*api.HTTPResponse, error) {
 	if resp, ok := m.responses[url]; ok {
 		return resp, nil
 	}
 	return &api.HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
+}
+
+func (m *mockHTTPDownloader) Post(_ context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
+	return m.Get(context.Background(), url, nil)
 }
 
 func TestStore_Load(t *testing.T) {

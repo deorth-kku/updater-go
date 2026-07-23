@@ -33,7 +33,7 @@ func (m *mockDownloader) Close() error          { return nil }
 // mockHTTPDownloader implements api.Downloader for testing.
 type mockHTTPDownloader struct{}
 
-func (m *mockHTTPDownloader) Get(_ context.Context, url string) (*api.HTTPResponse, error) {
+func (m *mockHTTPDownloader) Get(_ context.Context, url string, _ map[string]string) (*api.HTTPResponse, error) {
 	release := []map[string]any{
 		{
 			"tag_name": "v1.0.0",
@@ -43,6 +43,10 @@ func (m *mockHTTPDownloader) Get(_ context.Context, url string) (*api.HTTPRespon
 	}
 	body, _ := json.Marshal(release)
 	return &api.HTTPResponse{StatusCode: 200, Body: body}, nil
+}
+
+func (m *mockHTTPDownloader) Post(_ context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
+	return m.Get(context.Background(), url, nil)
 }
 
 func TestApplyIndex_ZeroBasedSingle(t *testing.T) {
