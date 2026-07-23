@@ -28,17 +28,19 @@ type UpdateResult struct {
 	NewVersion  string
 	Downloaded  string
 	Extracted   bool
+	RolledBack  bool
 	Error       error
 }
 
 // Updater orchestrates the update process for a single project.
 type Updater struct {
-	projectCfg config.ProjectConfig
-	entry      config.ProjectEntry
-	force      bool
-	dl         downloader.Downloader
-	httpDL     api.Downloader
-	logger     *slog.Logger
+	projectCfg    config.ProjectConfig
+	entry         config.ProjectEntry
+	force         bool
+	dl            downloader.Downloader
+	httpDL        api.Downloader
+	logger        *slog.Logger
+	targetVersion string // empty means normal update; non-empty means rollback to this version
 }
 
 // New creates a new Updater.
@@ -50,6 +52,19 @@ func New(cfg config.ProjectConfig, entry config.ProjectEntry, force bool, dl dow
 		dl:         dl,
 		httpDL:     httpDL,
 		logger:     logger,
+	}
+}
+
+// NewWithTargetVersion creates a new Updater with a target version for rollback.
+func NewWithTargetVersion(cfg config.ProjectConfig, entry config.ProjectEntry, force bool, targetVersion string, dl downloader.Downloader, httpDL api.Downloader, logger *slog.Logger) *Updater {
+	return &Updater{
+		projectCfg:    cfg,
+		entry:         entry,
+		force:         force,
+		dl:            dl,
+		httpDL:        httpDL,
+		logger:        logger,
+		targetVersion: targetVersion,
 	}
 }
 
@@ -140,6 +155,24 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		"reason", "queried backend Latest",
 		"result", rel.Version,
 	)
+
+	// Rollback mode: if targetVersion is set, use LatestByVersion instead.
+	if u.targetVersion != "" {
+		rel, err = apiAdapter.LatestByVersion(ctx, u.targetVersion)
+		if err != nil {
+			result.Error = fmt.Errorf("fetch rollback version %q: %w", u.targetVersion, err)
+			return result
+		}
+		result.NewVersion = rel.Version
+		result.OldVersion = u.entry.Version
+		result.RolledBack = true
+		u.log().Info("rollback mode active",
+			"target_version", u.targetVersion,
+			"matched_version", rel.Version,
+			"reason", "using LatestByVersion to find target version for rollback",
+			"result", rel.Version,
+		)
+	}
 
 	// Step 2: Check if update is needed.
 	//

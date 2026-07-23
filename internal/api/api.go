@@ -28,6 +28,7 @@ type Asset struct {
 // API is the interface all version-source backends implement.
 type API interface {
 	Latest(ctx context.Context) (*Release, error)
+	LatestByVersion(ctx context.Context, version string) (*Release, error)
 }
 
 // NewAPI creates the appropriate API adapter based on the project config.

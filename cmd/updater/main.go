@@ -31,10 +31,10 @@ var (
 	flagAdd2Conf bool
 	flagWait     bool
 	flagJobs     int
-	flagVerbose  bool
 	flagLogFile  string
 	flagLogLevel string
 	flagPath     string
+	flagRollback string
 )
 
 func main() {
@@ -53,6 +53,7 @@ func main() {
 	rootCmd.Flags().StringVarP(&flagLogFile, "log-file", "", "stderr", "log file path, 'stderr' for standard error")
 	rootCmd.Flags().StringVarP(&flagLogLevel, "log-level", "", "INFO", "log level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "install path for added project (e.g. --path /opt/tools)")
+	rootCmd.Flags().StringVarP(&flagRollback, "rollback", "t", "", "rollback to a specific version (e.g. --rollback 2.46.0)")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -141,6 +142,18 @@ func run(cmd *cobra.Command, args []string) error {
 			if err := writeJSON(configPath, cfg); err != nil {
 				logger.Error("persist project failed", "error", err)
 			}
+		}
+	}
+
+	// Handle --rollback flag: rollback to a specific version.
+	// Only valid when exactly one project is specified.
+	if flagRollback != "" {
+		if len(args) != 1 {
+			return fmt.Errorf("--rollback requires exactly one project name, got %d", len(args))
+		}
+		// Ensure the target project exists in the config
+		if projectExists(cfg.Projects, args[0]) < 0 {
+			return fmt.Errorf("project %q not found in config", args[0])
 		}
 	}
 
@@ -265,7 +278,12 @@ func run(cmd *cobra.Command, args []string) error {
 			defer func() { <-sem }() // release slot
 
 			upLogger := logger.With("component", "updater", "project", proj.Name)
-			u := updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, upLogger)
+			var u *updater.Updater
+			if flagRollback != "" {
+				u = updater.NewWithTargetVersion(*projCfg, proj, flagForce, flagRollback, aria2DL, httpDL, upLogger)
+			} else {
+				u = updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, upLogger)
+			}
 			result := u.Update(ctx)
 			mu.Lock()
 			defer mu.Unlock()
@@ -274,7 +292,7 @@ func run(cmd *cobra.Command, args []string) error {
 				logger.Error("update failed", "project", proj.Name, "error", result.Error)
 				anyError = true
 			} else {
-				updateVersion(cfg, proj.Name, result.NewVersion)
+				updateVersionAndHold(cfg, proj.Name, result.NewVersion, result.RolledBack)
 				if err := writeJSON(configPath, cfg); err != nil {
 					logger.Error("write config failed", "project", proj.Name, "error", err)
 				}
@@ -315,10 +333,15 @@ func writeJSON(path string, data any) error {
 	return nil
 }
 
-func updateVersion(cfg *config.Config, name, version string) {
+// updateVersionAndHold updates the version and sets hold=true in a single pass.
+func updateVersionAndHold(cfg *config.Config, name, version string, rollback bool) {
 	for i, v := range cfg.Projects {
 		if v.Name == name {
 			cfg.Projects[i].Version = version
+			if rollback {
+				cfg.Projects[i].Hold = true
+			}
+			break
 		}
 	}
 }

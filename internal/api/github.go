@@ -35,6 +35,81 @@ func (g *GitHubAPI) SetNoPull(noPull bool) {
 	g.noPull = noPull
 }
 
+// LatestByVersion finds a specific release by version string. It iterates
+// through all releases, applying the same selectVersion logic (tag_name vs
+// name) used by Latest, and returns the first match.
+func (g *GitHubAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
+
+	g.logger.Debug("github query (rollback)",
+		"account", g.accountName,
+		"project", g.projectName,
+		"target_version", version,
+		"reason", "fetch all releases to find target version",
+		"result", url,
+	)
+
+	resp, err := g.downloader.Get(ctx, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("github releases: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github releases returned status %d: %s", resp.StatusCode, string(resp.Body))
+	}
+
+	var releases []githubRelease
+	if err := json.Unmarshal(resp.Body, &releases); err != nil {
+		return nil, fmt.Errorf("parse github releases: %w", err)
+	}
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("no releases found for %s/%s", g.accountName, g.projectName)
+	}
+
+	// Mirror Python: compute namesUnique from the full list, then apply
+	// selectVersion consistently to each release — same logic as Latest.
+	names := make([]string, len(releases))
+	for i, r := range releases {
+		names[i] = r.Name
+	}
+	namesUnique := len(names) == uniqueStrings(names)
+
+	for i, rel := range releases {
+		v := selectVersion(rel, namesUnique, len(releases))
+		g.logger.Debug("github rollback check",
+			"account", g.accountName,
+			"project", g.projectName,
+			"index", i,
+			"tag_name", rel.TagName,
+			"name", rel.Name,
+			"computed_version", v,
+			"target_version", version,
+			"reason", "comparing computed version against target",
+			"result", fmt.Sprintf("match=%v", v == version),
+		)
+		if v == version {
+			g.logger.Info("rollback version found",
+				"account", g.accountName,
+				"project", g.projectName,
+				"version", v,
+				"tag_name", rel.TagName,
+				"name", rel.Name,
+				"reason", "target version matched during rollback scan",
+				"result", v,
+			)
+			return g.buildRelease(rel, v), nil
+		}
+	}
+
+	g.logger.Error("rollback version not found",
+		"account", g.accountName,
+		"project", g.projectName,
+		"target_version", version,
+		"reason", "no release matched the target version string",
+		"result", "error",
+	)
+	return nil, fmt.Errorf("version %q not found in %s/%s releases", version, g.accountName, g.projectName)
+}
+
 func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 	var url string
 	if g.noPull {
@@ -110,7 +185,7 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 		names[i] = r.Name
 	}
 	namesUnique := len(names) == uniqueStrings(names)
-	version := g.selectVersion(releases[0], namesUnique, len(releases))
+	version := selectVersion(releases[0], namesUnique, len(releases))
 	g.logger.Info("latest version detected",
 		"account", g.accountName,
 		"project", g.projectName,
@@ -139,7 +214,7 @@ type githubAsset struct {
 // This handles the case where the same tag is rebuilt multiple times —
 // all releases share the same name, so we use tag_name to avoid false
 // version drift (e.g. "v0.38.0 - June 3rd, 2026" vs stored "v0.38.0").
-func (g *GitHubAPI) selectVersion(rel githubRelease, namesUnique bool, totalReleases int) string {
+func selectVersion(rel githubRelease, namesUnique bool, totalReleases int) string {
 	if totalReleases > 1 && namesUnique && len(rel.Name) > 0 {
 		return rel.Name
 	}

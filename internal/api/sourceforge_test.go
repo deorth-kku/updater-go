@@ -82,3 +82,78 @@ func TestSourceforge_Latest_Filtering(t *testing.T) {
 		t.Errorf("Asset.Name = %q, want %q", rel.Assets[0].Name, "7z2401-x64.exe")
 	}
 }
+
+// TestSourceforgeAPI_LatestByVersion_Match tests rollback version matching.
+func TestSourceforgeAPI_LatestByVersion_Match(t *testing.T) {
+	rss := `<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>7z2401-x64.exe</title>
+      <pubDate>Wed, 03 Jan 2024 00:00:00 UT</pubDate>
+    </item>
+    <item>
+      <title>7z2400-x64.exe</title>
+      <pubDate>Tue, 02 Jan 2024 00:00:00 UT</pubDate>
+    </item>
+    <item>
+      <title>7z2300-x64.exe</title>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 UT</pubDate>
+    </item>
+  </channel>
+</rss>`
+	mdl := newMockDownloader()
+	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+
+	api := &SourceforgeAPI{
+		projectName: "sevenzip",
+		rssURL:      "https://sourceforge.net/projects/sevenzip/rss?path=/",
+		dlCfg: config.DownloadConfig{
+			Keyword:  config.StringOrSlice{"x64"},
+			Filetype: config.StringOrSlice{"exe"},
+		},
+		downloader: mdl,
+		logger:     slogDiscard(),
+	}
+	rel, err := api.LatestByVersion(context.Background(), "Tue, 02 Jan 2024 00:00:00 UT")
+	if err != nil {
+		t.Fatalf("LatestByVersion() error = %v", err)
+	}
+	if rel.Version != "Tue, 02 Jan 2024 00:00:00 UT" {
+		t.Errorf("Version = %q, want %q", rel.Version, "Tue, 02 Jan 2024 00:00:00 UT")
+	}
+	if rel.Assets[0].Name != "7z2400-x64.exe" {
+		t.Errorf("Asset.Name = %q, want %q", rel.Assets[0].Name, "7z2400-x64.exe")
+	}
+}
+
+// TestSourceforgeAPI_LatestByVersion_NotFound tests that an error is returned
+// when the target version is not found.
+func TestSourceforgeAPI_LatestByVersion_NotFound(t *testing.T) {
+	rss := `<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>7z2401-x64.exe</title>
+      <pubDate>Wed, 03 Jan 2024 00:00:00 UT</pubDate>
+    </item>
+  </channel>
+</rss>`
+	mdl := newMockDownloader()
+	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+
+	api := &SourceforgeAPI{
+		projectName: "sevenzip",
+		rssURL:      "https://sourceforge.net/projects/sevenzip/rss?path=/",
+		dlCfg: config.DownloadConfig{
+			Keyword:  config.StringOrSlice{"x64"},
+			Filetype: config.StringOrSlice{"exe"},
+		},
+		downloader: mdl,
+		logger:     slogDiscard(),
+	}
+	rel, err := api.LatestByVersion(context.Background(), "Fri, 05 Jan 2024 00:00:00 UT")
+	if err == nil {
+		t.Fatalf("LatestByVersion() expected error, got %v", rel)
+	}
+}

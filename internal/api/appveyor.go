@@ -164,6 +164,133 @@ func (a *AppveyorAPI) Latest(ctx context.Context) (*Release, error) {
 	return nil, fmt.Errorf("no suitable build found for %s/%s", a.accountName, a.projectName)
 }
 
+// LatestByVersion finds a specific build by version string. It iterates
+// through all builds in history, matching build.Version against the target,
+// then fetches the build detail and artifacts to build the Release.
+func (a *AppveyorAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
+	baseURL := "https://ci.appveyor.com/api"
+	branchParam := ""
+	if a.branch != "" {
+		branchParam = "&branch=" + a.branch
+	}
+
+	historyURL := fmt.Sprintf("%s/projects/%s/%s/history?recordsNumber=100%s",
+		baseURL, a.accountName, a.projectName, branchParam)
+
+	a.logger.Debug("appveyor query (rollback)",
+		"account", a.accountName,
+		"project", a.projectName,
+		"target_version", version,
+		"reason", "fetch build history to find target version",
+		"result", historyURL,
+	)
+
+	resp, err := a.downloader.Get(ctx, historyURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("appveyor history: %w", err)
+	}
+
+	var history appveyorHistory
+	if err := json.Unmarshal(resp.Body, &history); err != nil {
+		return nil, fmt.Errorf("parse appveyor history: %w", err)
+	}
+
+	for _, build := range history.Builds {
+		// Skip PR-triggered builds
+		if build.PullRequestID != "" {
+			a.logger.Debug("appveyor build skipped (rollback)",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", build.Version,
+				"reason", "build is PR-triggered, excluded",
+				"result", "skip",
+			)
+			continue
+		}
+
+		if build.Version != version {
+			a.logger.Debug("appveyor rollback version mismatch",
+				"account", a.accountName,
+				"project", a.projectName,
+				"build_version", build.Version,
+				"target_version", version,
+				"reason", "build version does not match target",
+				"result", "skip",
+			)
+			continue
+		}
+
+		a.logger.Debug("appveyor rollback version matched",
+			"account", a.accountName,
+			"project", a.projectName,
+			"version", build.Version,
+			"reason", "target version found in build history",
+			"result", "proceed",
+		)
+
+		// Fetch build detail and artifacts (same logic as Latest)
+		buildURL := fmt.Sprintf("%s/projects/%s/%s/build/%s",
+			baseURL, a.accountName, a.projectName, build.Version)
+		buildResp, err := a.downloader.Get(ctx, buildURL, nil)
+		if err != nil {
+			continue
+		}
+
+		var buildDetail appveyorBuildDetail
+		if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
+			continue
+		}
+
+		jobID := findJobID(buildDetail.Build.Jobs)
+		if jobID == "" {
+			a.logger.Debug("appveyor rollback build skipped",
+				"account", a.accountName,
+				"project", a.projectName,
+				"version", build.Version,
+				"reason", "no suitable job id found in build",
+				"result", "skip",
+			)
+			continue
+		}
+
+		artifactsURL := fmt.Sprintf("%s/buildjobs/%s/artifacts", baseURL, jobID)
+		artResp, err := a.downloader.Get(ctx, artifactsURL, nil)
+		if err != nil {
+			continue
+		}
+
+		var artifacts []AppveyorArtifact
+		if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
+			continue
+		}
+
+		a.logger.Info("rollback version detected",
+			"account", a.accountName,
+			"project", a.projectName,
+			"version", build.Version,
+			"job_id", jobID,
+			"artifacts", len(artifacts),
+			"reason", "found target build with artifacts for rollback",
+			"result", build.Version,
+		)
+		return &Release{
+			Version:   build.Version,
+			Artifacts: artifacts,
+			JobID:     jobID,
+			BaseURL:   baseURL,
+		}, nil
+	}
+
+	a.logger.Error("rollback version not found",
+		"account", a.accountName,
+		"project", a.projectName,
+		"target_version", version,
+		"reason", "no build matched the target version string",
+		"result", "error",
+	)
+	return nil, fmt.Errorf("version %q not found in appveyor history for %s/%s", version, a.accountName, a.projectName)
+}
+
 // findJobID selects the best job ID from a build's job list.
 // Prefers jobs with "release" in the name when multiple jobs exist.
 func findJobID(jobs []appveyorJob) string {

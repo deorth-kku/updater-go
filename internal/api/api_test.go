@@ -81,6 +81,120 @@ func TestGitHubAPI_Latest(t *testing.T) {
 	}
 }
 
+// TestGitHubAPI_LatestByVersion_MatchByName tests rollback when names are unique
+// and the target matches a release name (not tag_name).
+func TestGitHubAPI_LatestByVersion_MatchByName(t *testing.T) {
+	fixture := []githubRelease{
+		{
+			TagName: "v2.47.0",
+			Name:    "Git 2.47.0",
+			Assets: []githubAsset{
+				{Name: "PortableGit-2.47.0-64-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable.7z"},
+			},
+		},
+		{
+			TagName: "v2.46.0",
+			Name:    "Git 2.46.0",
+			Assets: []githubAsset{
+				{Name: "PortableGit-2.46.0-64-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable2.7z"},
+			},
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(fixture)
+	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewGitHubAPI(config.BasicConfig{
+		AccountName: "git-for-windows",
+		ProjectName: "git",
+	}, mdl, slog.Default())
+
+	rel, err := api.LatestByVersion(t.Context(), "Git 2.46.0")
+	if err != nil {
+		t.Fatalf("LatestByVersion() error = %v", err)
+	}
+	if rel.Version != "Git 2.46.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "Git 2.46.0")
+	}
+	if rel.Assets[0].Name != "PortableGit-2.46.0-64-bit.7z" {
+		t.Errorf("Asset.Name = %q, want %q", rel.Assets[0].Name, "PortableGit-2.46.0-64-bit.7z")
+	}
+}
+
+// TestGitHubAPI_LatestByVersion_MatchByTagName tests rollback when names are
+// identical (single tag with multiple builds) so version falls back to tag_name.
+func TestGitHubAPI_LatestByVersion_MatchByTagName(t *testing.T) {
+	fixture := []githubRelease{
+		{
+			TagName: "v2.47.0",
+			Name:    "v2.47.0",
+			Assets: []githubAsset{
+				{Name: "PortableGit-2.47.0-64-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable.7z"},
+			},
+		},
+		{
+			TagName: "v2.46.0",
+			Name:    "v2.46.0",
+			Assets: []githubAsset{
+				{Name: "PortableGit-2.46.0-64-bit.7z", BrowserDownloadURL: "https://github.com/releases/portable2.7z"},
+			},
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(fixture)
+	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewGitHubAPI(config.BasicConfig{
+		AccountName: "git-for-windows",
+		ProjectName: "git",
+	}, mdl, slog.Default())
+
+	rel, err := api.LatestByVersion(t.Context(), "v2.46.0")
+	if err != nil {
+		t.Fatalf("LatestByVersion() error = %v", err)
+	}
+	if rel.Version != "v2.46.0" {
+		t.Errorf("Version = %q, want %q", rel.Version, "v2.46.0")
+	}
+}
+
+// TestGitHubAPI_LatestByVersion_NotFound tests that an error is returned when
+// the target version is not found in the releases list.
+func TestGitHubAPI_LatestByVersion_NotFound(t *testing.T) {
+	fixture := []githubRelease{
+		{
+			TagName: "v2.47.0",
+			Name:    "Git 2.47.0",
+			Assets:  []githubAsset{},
+		},
+	}
+
+	mdl := newMockDownloader()
+	body, _ := json.Marshal(fixture)
+	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
+		StatusCode: 200,
+		Body:       body,
+	})
+
+	api := NewGitHubAPI(config.BasicConfig{
+		AccountName: "git-for-windows",
+		ProjectName: "git",
+	}, mdl, slog.Default())
+
+	rel, err := api.LatestByVersion(t.Context(), "v9.9.9")
+	if err == nil {
+		t.Fatalf("LatestByVersion() expected error, got %v", rel)
+	}
+}
+
 func TestFilterAssets(t *testing.T) {
 	assets := []Asset{
 		{URL: "a", Name: "PortableGit-2.47.0-64-bit.7z"},

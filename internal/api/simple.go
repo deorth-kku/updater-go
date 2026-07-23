@@ -113,6 +113,11 @@ func (s *SimpleSpiderAPI) Latest(ctx context.Context) (*Release, error) {
 	}, nil
 }
 
+// LatestByVersion is not supported for SimpleSpider (no historical version list).
+func (s *SimpleSpiderAPI) LatestByVersion(_ context.Context, _ string) (*Release, error) {
+	return nil, fmt.Errorf("rollback not supported for simplespider backend")
+}
+
 func (s *SimpleSpiderAPI) buildFromDirectURL(ctx context.Context, dlURL string, page string) (*Release, error) {
 	// Mirrors updater-rpc simplespider.getDlUrl: when download.data is
 	// configured, POST it to the direct URL and use the 3xx Location header.

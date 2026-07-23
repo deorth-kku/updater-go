@@ -119,6 +119,11 @@ func (a *ApiJsonAPI) Latest(ctx context.Context) (*Release, error) {
 	}, nil
 }
 
+// LatestByVersion is not supported for ApiJson (no historical version list).
+func (a *ApiJsonAPI) LatestByVersion(_ context.Context, _ string) (*Release, error) {
+	return nil, fmt.Errorf("rollback not supported for apijson backend")
+}
+
 func (a *ApiJsonAPI) buildDownloadURL() (string, error) {
 	if len(a.dlCfg.Path) == 0 {
 		return "", fmt.Errorf("apijson: no path configured")
