@@ -124,7 +124,7 @@ func (u *Updater) needUpdateByPefile(remote string, pepath string) (bool, string
 		)
 		return true, "failed to read peversion, treat as install"
 	}
-	u.log().Debug("read exe version", "filever", fileVer, "prodver", prodVer)
+	u.log().Debug("read peversion", "filever", fileVer, "prodver", prodVer)
 	// Mirrors Python: no VS_FIXEDFILEINFO -> install mode (always update).
 	if fileVer == (peversion.Version{}) && prodVer == (peversion.Version{}) {
 		return true, "installed binary file has no version resource, treat as install"
