@@ -1,6 +1,8 @@
 package extractor
 
 import (
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -25,8 +27,8 @@ func TestFindSfxOffset(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ok := findSfxOffset(f)
-	if !ok {
+	offset, ty := findSfxOffset(f)
+	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find the 7z signature")
 	}
 	if offset != 0 {
@@ -49,8 +51,8 @@ func TestFindSfxOffset_ShortHeaderAtEnd(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ok := findSfxOffset(f)
-	if !ok {
+	offset, ty := findSfxOffset(f)
+	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find trailing 7z signature")
 	}
 	if offset != 4 {
@@ -77,8 +79,8 @@ func TestFindSfxOffset_WithStub(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ok := findSfxOffset(f)
-	if !ok {
+	offset, ty := findSfxOffset(f)
+	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find the embedded 7z signature")
 	}
 	if offset != int64(len(stub)) {
@@ -100,7 +102,8 @@ func TestFindSfxOffset_NotASfx(t *testing.T) {
 	}
 	defer f.Close()
 
-	if _, ok := findSfxOffset(f); ok {
+	_, ty := findSfxOffset(f)
+	if ty != notSfx {
 		t.Error("findSfxOffset() expected false for non-SFX file")
 	}
 }
@@ -173,4 +176,69 @@ func TestExtractFile_Sfx7z(t *testing.T) {
 	}
 
 	verifyExtracted(t, destDir, contents)
+}
+
+const testZipSfx = "/tmp/ReShade_Setup_6.7.3_Addon.exe"
+
+func checkFile(t *testing.T) {
+	t.Helper()
+	_, err := os.Stat(testZipSfx)
+	if errors.Is(err, os.ErrNotExist) {
+		t.SkipNow()
+	}
+}
+
+func TestFindSfxOffset_Zip(t *testing.T) {
+	// curl https://reshade.me/downloads/ReShade_Setup_6.7.3_Addon.exe >/tmp/ReShade_Setup_6.7.3_Addon.exe
+	checkFile(t)
+	f, err := os.Open(testZipSfx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	offset, ty := findSfxOffset(f)
+	if ty != zipSfx {
+		t.Fatal("findSfxOffset() expected to find trailing zip signature")
+	}
+	if offset != 154624 {
+		t.Errorf("findSfxOffset() = %d, want 154624", offset)
+	}
+}
+
+func TestExtractFile_SfxZip(t *testing.T) {
+	checkFile(t)
+	destDir := t.TempDir()
+	cfg := config.DecompressConfig{}
+	d, err := New(t.Context(), testZipSfx, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	verifyJsonExtracted(t, destDir, []string{
+		"ReShade32.json",
+		"ReShade32_XR.json",
+		"ReShade64.json",
+		"ReShade64_XR.json",
+	})
+}
+
+// verifyJsonExtracted checks that all expected JSON files exist in destDir and contain valid JSON.
+func verifyJsonExtracted(t *testing.T, destDir string, jsonFiles []string) {
+	t.Helper()
+	for _, name := range jsonFiles {
+		full := filepath.Join(destDir, name)
+		content, err := os.ReadFile(full)
+		if err != nil {
+			t.Errorf("%s: open: %v", name, err)
+			continue
+		}
+		var v any
+		if err := json.Unmarshal(content, &v); err != nil {
+			t.Errorf("%s: invalid JSON: %v", name, err)
+		}
+	}
 }

@@ -16,13 +16,16 @@ const (
 )
 
 // sevenZipMagic is the 7z format signature that marks the start of a 7z stream.
-var sevenZipMagic = []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04}
+var (
+	sevenZipMagic = []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, 0x04}
+	zipMagic      = []byte{0x50, 0x4b, 0x03, 0x04}
+)
 
 func init() {
 	archives.RegisterFormat(sevenZipSFX{})
 }
 
-type sevenZipSFX archives.SevenZip
+type sevenZipSFX struct{}
 
 type sfxSeekReaderAt interface {
 	io.Reader
@@ -48,12 +51,13 @@ func (sevenZipSFX) Match(_ context.Context, filename string, stream io.Reader) (
 		return mr, err
 	}
 
-	offset, ok := findSfxOffsetInData(data)
-	if !ok || offset == 0 {
+	offset, ty := findSfxOffsetInData(data)
+	if ty == notSfx || offset == 0 {
 		return mr, nil
 	}
 
 	mr.ByStream = true
+	mr.ByName = true
 	return mr, nil
 }
 
@@ -68,36 +72,77 @@ func (sfx sevenZipSFX) Extract(ctx context.Context, archive io.Reader, handleFil
 		return fmt.Errorf("determine source archive size: %w", err)
 	}
 
-	offset, ok := findSfxOffsetReaderAt(file)
-	if !ok || offset == 0 {
+	offset, ty := findSfxOffsetReaderAt(file)
+	if ty == notSfx || offset == 0 {
 		return archives.NoMatch
 	}
 
 	payload := io.NewSectionReader(file, offset, size-offset)
-	return archives.SevenZip(sfx).Extract(ctx, payload, handleFile)
+	switch ty {
+	case sevenZipSfx:
+		return archives.SevenZip{}.Extract(ctx, payload, handleFile)
+	case zipSfx:
+		return archives.Zip{}.Extract(ctx, payload, handleFile)
+	default:
+		return fmt.Errorf("not valid sfxType %d", ty)
+	}
 }
 
 // findSfxOffset scans the beginning of f for the 7z signature. Self-extracting
 // (SFX) archives embed a 7z payload after an executable stub, so the signature
 // is not at offset 0. Returns the offset of the signature and true if found.
-func findSfxOffset(f *os.File) (int64, bool) {
+func findSfxOffset(f *os.File) (int64, sfxType) {
 	return findSfxOffsetReaderAt(f)
 }
 
-func findSfxOffsetReaderAt(r io.ReaderAt) (int64, bool) {
+type sfxType int
+
+const (
+	notSfx sfxType = iota
+	sevenZipSfx
+	zipSfx
+)
+
+func findSfxOffsetReaderAt(r io.ReaderAt) (int64, sfxType) {
 	data := make([]byte, searchLimit)
 	n, err := r.ReadAt(data, 0)
 	if err != nil && err != io.EOF {
-		return 0, false
+		return 0, notSfx
 	}
 	return findSfxOffsetInData(data[:n])
 }
 
-func findSfxOffsetInData(data []byte) (int64, bool) {
-	for i := range len(data) - len(sevenZipMagic) + 1 {
-		if bytes.Equal(sevenZipMagic, data[i:i+len(sevenZipMagic)]) {
+func findSfxOffsetInData(data []byte) (int64, sfxType) {
+	offset, ok := findSfxOffsetInDataWithMagic(data, sevenZipMagic)
+	if ok {
+		return offset, sevenZipSfx
+	}
+	offset, ok = findSfxOffsetInDataWithZipVersion(data)
+	if ok {
+		return offset, zipSfx
+	}
+	return 0, notSfx
+}
+
+func findSfxOffsetInDataWithMagic(data []byte, magic []byte) (int64, bool) {
+	for i := range len(data) - len(magic) + 1 {
+		if bytes.Equal(magic, data[i:i+len(magic)]) {
 			return int64(i), true
 		}
+	}
+	return 0, false
+}
+
+func findSfxOffsetInDataWithZipVersion(data []byte) (int64, bool) {
+	magic := zipMagic
+	for i := range len(data) - len(magic) + 2 {
+		if !bytes.Equal(magic, data[i:i+len(magic)]) {
+			continue
+		}
+		if data[i+4] == 0 { // zip version, cannot be zero
+			continue
+		}
+		return int64(i), true
 	}
 	return 0, false
 }
