@@ -87,13 +87,21 @@ func replaceVars(s, path, name, dlFilename, version string) string {
 
 // exePath resolves the installed executable path used for use_exe_version.
 func (u *Updater) exePath() string {
+	return u.pePath(".exe")
+}
+
+func (u *Updater) dllPath() string {
+	return u.pePath(".dll")
+}
+
+func (u *Updater) pePath(ext string) string {
 	image := u.projectCfg.Process.ImageName
 	if image == "" {
 		image = u.projectCfg.Basic.ProjectName
 	}
 	p := filepath.Join(u.entry.SavePath, image)
-	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(p), ".exe") {
-		p += ".exe"
+	if !strings.HasSuffix(strings.ToLower(p), ext) {
+		p += ext
 	}
 	return p
 }
@@ -102,30 +110,29 @@ func (u *Updater) exePath() string {
 // returns (true, reason) when an update should proceed. When the exe is
 // missing it is treated as a fresh install (always update). When the exe has
 // no version resource we also update (mirrors the Python install-mode branch).
-func (u *Updater) needUpdateByExe(remote string) (bool, string) {
-	exepath := u.exePath()
-	if _, err := os.Stat(exepath); err != nil {
+func (u *Updater) needUpdateByPefile(remote string, pepath string) (bool, string) {
+	if _, err := os.Stat(pepath); err != nil {
 		return true, "installed exe missing, treat as install"
 	}
-	fileVer, prodVer, err := peversion.FileVersion(exepath)
+	fileVer, prodVer, err := peversion.FileVersion(pepath)
 	if err != nil {
-		u.log().Warn("read exe version failed",
-			"path", exepath,
+		u.log().Warn("read peversion failed",
+			"path", pepath,
 			"error", err,
 			"reason", "fall back to install mode",
 			"result", "warn",
 		)
-		return true, "failed to read exe version, treat as install"
+		return true, "failed to read peversion, treat as install"
 	}
 	u.log().Debug("read exe version", "filever", fileVer, "prodver", prodVer)
 	// Mirrors Python: no VS_FIXEDFILEINFO -> install mode (always update).
 	if fileVer == (peversion.Version{}) && prodVer == (peversion.Version{}) {
-		return true, "installed exe has no version resource, treat as install"
+		return true, "installed binary file has no version resource, treat as install"
 	}
 	if !peversion.NeedsUpdate(remote, fileVer, prodVer) {
-		return false, "remote version not newer than installed exe FileVersion/ProductVersion"
+		return false, "remote version not newer than installed binary FileVersion/ProductVersion"
 	}
-	return true, "remote version newer than installed exe FileVersion/ProductVersion"
+	return true, "remote version newer than installed binary FileVersion/ProductVersion"
 }
 
 // Update runs the full update flow for the project.
@@ -180,7 +187,8 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	// or force`. So force takes precedence over everything: when set we
 	// always proceed regardless of version. Only when force is off do we
 	// fall into the version-specific checks.
-	if u.force {
+	switch {
+	case u.force:
 		u.log().Info("update needed",
 			"old_version", result.OldVersion,
 			"new_version", rel.Version,
@@ -188,7 +196,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			"reason", "force enabled",
 			"result", "proceed",
 		)
-	} else if u.projectCfg.Version.UseExeVersion {
+	case u.projectCfg.Version.UseExeVersion:
 		// use_exe_version: instead of comparing against the recorded
 		// currentVersion, read the binary FileVersion / ProductVersion
 		// straight from the installed exe (Windows PE only). This mirrors
@@ -196,7 +204,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		// it as a fresh install; otherwise an update is needed only when the
 		// remote version is strictly greater than BOTH the installed
 		// FileVersion and ProductVersion.
-		need, reason := u.needUpdateByExe(rel.Version)
+		need, reason := u.needUpdateByPefile(rel.Version, u.exePath())
 		if !need {
 			u.log().Info("no update needed",
 				"version", rel.Version,
@@ -212,7 +220,26 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			"reason", reason,
 			"result", "proceed",
 		)
-	} else { // generic comparison
+	case u.projectCfg.Version.UseDllVersion:
+		// use_dll_version: similar to use_exe_version, but with an .dll file
+		need, reason := u.needUpdateByPefile(rel.Version, u.dllPath())
+		if !need {
+			u.log().Info("no update needed",
+				"version", rel.Version,
+				"reason", reason,
+				"result", "skip",
+			)
+			return result
+		}
+		u.log().Info("update needed",
+			"old_version", result.OldVersion,
+			"new_version", rel.Version,
+			"force", u.force,
+			"reason", reason,
+			"result", "proceed",
+		)
+	default:
+		// generic comparison
 		if rel.Version == result.OldVersion {
 			u.log().Info("no update needed",
 				"version", rel.Version,
@@ -503,8 +530,12 @@ func assetNames(assets []api.Asset) []string {
 // install mode is true when the installed exe is missing; otherwise it is true
 // when there is no recorded currentVersion.
 func (u *Updater) isInstallMode() bool {
-	if u.projectCfg.Version.UseExeVersion {
+	switch {
+	case u.projectCfg.Version.UseExeVersion:
 		_, err := os.Stat(u.exePath())
+		return err != nil
+	case u.projectCfg.Version.UseDllVersion:
+		_, err := os.Stat(u.dllPath())
 		return err != nil
 	}
 	return u.entry.Version == ""

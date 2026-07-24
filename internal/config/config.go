@@ -37,6 +37,7 @@ func hardcodedDefaults() ProjectConfig {
 		Version: VersionConfig{
 			Path:          nil,
 			UseExeVersion: false,
+			UseDllVersion: false,
 			UseCmdVersion: false,
 			FromPage:      false,
 			Index:         0,

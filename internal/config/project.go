@@ -124,6 +124,7 @@ type DownloadConfig struct {
 type VersionConfig struct {
 	Path          []PathSegment `json:"path,omitzero"`
 	UseExeVersion bool          `json:"use_exe_version,omitzero"`
+	UseDllVersion bool          `json:"use_dll_version,omitzero"`
 	UseCmdVersion bool          `json:"use_cmd_version,omitzero"`
 	FromPage      bool          `json:"from_page,omitzero"`
 	Index         int           `json:"index,omitzero"`

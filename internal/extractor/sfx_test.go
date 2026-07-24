@@ -3,12 +3,14 @@ package extractor
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
+	"github.com/deorth-kku/updater-go/internal/peversion"
 	"github.com/mholt/archives"
 )
 
@@ -224,6 +226,11 @@ func TestExtractFile_SfxZip(t *testing.T) {
 		"ReShade64.json",
 		"ReShade64_XR.json",
 	})
+	filever, prodver, err := peversion.FileVersion(filepath.Join(destDir, "ReShade64.dll"))
+	if err != nil {
+		t.Fatalf("peversion error = %v", err)
+	}
+	fmt.Println(filever, prodver)
 }
 
 // verifyJsonExtracted checks that all expected JSON files exist in destDir and contain valid JSON.
