@@ -112,7 +112,7 @@ func (u *Updater) pePath(ext string) string {
 // no version resource we also update (mirrors the Python install-mode branch).
 func (u *Updater) needUpdateByPefile(remote string, pepath string) (bool, string) {
 	if _, err := os.Stat(pepath); err != nil {
-		return true, "installed exe missing, treat as install"
+		return true, "pefile missing, treat as install: " + pepath
 	}
 	fileVer, prodVer, err := peversion.FileVersion(pepath)
 	if err != nil {
