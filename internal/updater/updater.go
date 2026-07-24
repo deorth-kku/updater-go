@@ -442,22 +442,21 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	return result
 }
 
-// selectDownloadURL picks the best download URL from a release.
-func (u *Updater) selectDownloadURL(rel *api.Release) string {
+func SelectDownloadURL(rel *api.Release, conf config.DownloadConfig, install bool, logger *slog.Logger) string {
 	// If a direct URL is configured, use it
-	if u.projectCfg.Download.URL != "" {
+	if conf.URL != "" {
 		// %VER global replacement (gap #25): the configured URL may embed
 		// %VER which must be expanded to the detected version.
-		url := strings.ReplaceAll(u.projectCfg.Download.URL, "%VER", rel.Version)
-		u.log().Info("download URL selected",
+		url := strings.ReplaceAll(conf.URL, "%VER", rel.Version)
+		logger.Info("download URL selected",
 			"reason", "direct download.url configured, overrides asset matching",
 			"result", url,
 		)
 		return url
 	}
 
-	fs := api.NewFileSelector(u.projectCfg.Download, u.isInstallMode(), u.log().With("comp", "selector"))
-	idx := u.projectCfg.Download.Index
+	fs := api.NewFileSelector(conf, install, logger.With("comp", "selector"))
+	idx := conf.Index
 	matchcount := 0
 	// For GitHub releases, filter assets by keywords and index
 	if len(rel.Assets) > 0 {
@@ -469,7 +468,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 				matchcount++
 				continue
 			}
-			u.log().Info("download URL selected",
+			logger.Info("download URL selected",
 				"asset", v.Name,
 				"reason", "matched asset chosen for download",
 				"result", v.URL,
@@ -491,7 +490,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 				continue
 			}
 			url := rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + v.FileName
-			u.log().Info("download URL selected",
+			logger.Info("download URL selected",
 				"artifact", v.FileName,
 				"reason", "matched appveyor artifact chosen for download",
 				"result", url,
@@ -502,18 +501,23 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 
 	// Fallback to the release URL
 	if rel.URL != "" {
-		u.log().Warn("download URL fallback",
+		logger.Warn("download URL fallback",
 			"reason", "no asset/artifact matched, using release URL as last resort",
 			"result", rel.URL,
 		)
 		return rel.URL
 	}
 
-	u.log().Warn("no download URL selected",
+	logger.Warn("no download URL selected",
 		"reason", "no direct url, no matched asset/artifact, and no release url",
 		"result", "",
 	)
 	return ""
+}
+
+// selectDownloadURL picks the best download URL from a release.
+func (u *Updater) selectDownloadURL(rel *api.Release) string {
+	return SelectDownloadURL(rel, u.projectCfg.Download, u.isInstallMode(), u.log())
 }
 
 // assetNames returns the names of all assets.

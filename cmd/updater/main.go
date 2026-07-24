@@ -149,7 +149,7 @@ func run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get the latest release: %w", err)
 		}
-		logger.Info("selected release", "version", rel.Version, "url", rel.URL, "assets", rel.Assets, "artifacts", rel.Artifacts)
+		logger.Info("selected release", "version", rel.Version, "url", rel.URL, "assets", rel.Assets, "artifacts", rel.Artifacts, "selected", updater.SelectDownloadURL(rel, pc.Download, true, logger))
 		return nil
 	}
 
