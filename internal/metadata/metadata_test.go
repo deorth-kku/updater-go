@@ -30,8 +30,8 @@ func (m *mockHTTPDownloader) Get(_ context.Context, url string, _ map[string]str
 	return &api.HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
 }
 
-func (m *mockHTTPDownloader) Post(_ context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
-	return m.Get(context.Background(), url, nil)
+func (m *mockHTTPDownloader) Post(ctx context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
+	return m.Get(ctx, url, nil)
 }
 
 func TestStore_Load(t *testing.T) {

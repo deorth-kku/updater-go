@@ -93,12 +93,22 @@ func (s *StringOrJsonPath) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("StringOrJsonPath must be string or []PathSegment, got %s", string(data))
 }
 
+type Keywords = Slice[Slice[string]]
+
+func SimpleKeywords(in ...string) Keywords {
+	out := make(Keywords, len(in))
+	for i, v := range in {
+		out[i] = []string{v}
+	}
+	return out
+}
+
 // DownloadConfig controls how the download URL is constructed and what file to pick.
 type DownloadConfig struct {
-	Keyword              StringOrSlice      `json:"keyword,omitzero"`
-	UpdateKeyword        StringOrSlice      `json:"update_keyword,omitzero"`
-	ExcludeKeyword       StringOrSlice      `json:"exclude_keyword,omitzero"`
-	Filetype             StringOrSlice      `json:"filetype,omitzero"` // string or []string
+	Keyword              Keywords           `json:"keyword,omitzero"`
+	UpdateKeyword        Keywords           `json:"update_keyword,omitzero"`
+	ExcludeKeyword       Keywords           `json:"exclude_keyword,omitzero"`
+	Filetype             Slice[string]      `json:"filetype,omitzero"` // string or []string
 	Regexes              []string           `json:"regexes,omitzero"`
 	URL                  string             `json:"url,omitzero"`
 	AddVersionToFilename bool               `json:"add_version_to_filename,omitzero"`
@@ -150,20 +160,20 @@ type BuildConfig struct {
 	Branch string `json:"branch,omitzero"`
 }
 
-// StringOrSlice allows a JSON field to be either a string or an array of strings.
+// Slice allows a JSON field to be either a string or an array of strings.
 // This matches the Python config where keyword can be "rpcs3" or ["%arch"].
-type StringOrSlice []string
+type Slice[T any] []T
 
 // UnmarshalJSON implements custom unmarshaling for StringOrSlice.
-func (s *StringOrSlice) UnmarshalJSON(data []byte) error {
+func (s *Slice[T]) UnmarshalJSON(data []byte) error {
 	// Try string first
-	var str string
+	var str T
 	if err := json.Unmarshal(data, &str); err == nil {
-		*s = []string{str}
+		*s = []T{str}
 		return nil
 	}
 	// Try array
-	var arr []string
+	var arr []T
 	if err := json.Unmarshal(data, &arr); err == nil {
 		*s = arr
 		return nil
@@ -172,11 +182,12 @@ func (s *StringOrSlice) UnmarshalJSON(data []byte) error {
 }
 
 // First returns the first element, or empty string if empty.
-func (s StringOrSlice) First() string {
+func (s Slice[T]) First() T {
 	if len(s) > 0 {
 		return s[0]
 	}
-	return ""
+	var v T
+	return v
 }
 
 // BoolOrString allows a JSON field to be either a boolean or a string.

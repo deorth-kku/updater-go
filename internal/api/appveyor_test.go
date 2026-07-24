@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -92,7 +91,7 @@ func TestAppveyorAPI_LatestByVersion_Match(t *testing.T) {
 		ProjectName: "mikumikulibrary",
 	}, mdl, slog.Default())
 
-	rel, err := api.LatestByVersion(context.Background(), "1.0.1")
+	rel, err := api.LatestByVersion(t.Context(), "1.0.1")
 	if err != nil {
 		t.Fatalf("LatestByVersion() error = %v", err)
 	}
@@ -126,7 +125,7 @@ func TestAppveyorAPI_LatestByVersion_NotFound(t *testing.T) {
 		ProjectName: "mikumikulibrary",
 	}, mdl, slog.Default())
 
-	rel, err := api.LatestByVersion(context.Background(), "9.9.9")
+	rel, err := api.LatestByVersion(t.Context(), "9.9.9")
 	if err == nil {
 		t.Fatalf("LatestByVersion() expected error, got %v", rel)
 	}

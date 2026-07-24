@@ -1,7 +1,6 @@
 package downloader
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -61,7 +60,7 @@ func TestRemoteAria2Download(t *testing.T) {
 	addr := fmt.Sprintf("http://127.0.0.1:%d/jsonrpc", port)
 	secret := generateSecret()
 
-	la, newSecret, err := StartLocalAria2(context.Background(), addr, secret, "", logger)
+	la, newSecret, err := StartLocalAria2(t.Context(), addr, secret, "", logger)
 	if err != nil {
 		t.Fatalf("start local aria2c: %v", err)
 	}
@@ -73,7 +72,7 @@ func TestRemoteAria2Download(t *testing.T) {
 
 	// --- Create downloader with remote-dir and local-dir ---
 	downloader, err := NewAria2Downloader(
-		context.Background(),
+		t.Context(),
 		addr,
 		secret,
 		remoteDir,
@@ -90,7 +89,7 @@ func TestRemoteAria2Download(t *testing.T) {
 
 	// --- Download ---
 	filename := "testfile.zip"
-	localPath, gid, err := downloader.Download(context.Background(), dlURL, filename, remoteDir+"/proj", nil)
+	localPath, gid, err := downloader.Download(t.Context(), dlURL, filename, remoteDir+"/proj", nil)
 	if err != nil {
 		t.Fatalf("download failed: %v", err)
 	}

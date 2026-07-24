@@ -11,7 +11,7 @@ import (
 var gamingConfigDir = filepath.Join("..", "..", "..", "updater-config", "gaming")
 
 func TestStringOrSlice_String(t *testing.T) {
-	var s StringOrSlice
+	var s Slice[string]
 	if err := json.Unmarshal([]byte(`"rpcs3"`), &s); err != nil {
 		t.Fatalf("unmarshal string: %v", err)
 	}
@@ -21,9 +21,9 @@ func TestStringOrSlice_String(t *testing.T) {
 }
 
 func TestStringOrSlice_Slice(t *testing.T) {
-	var s StringOrSlice
+	var s Slice[string]
 	if err := json.Unmarshal([]byte(`["%arch", "amd64"]`), &s); err != nil {
-		t.Fatalf("unmarshal slice: %v", err)
+		t.Fatalf("unmarshal Slice[string]: %v", err)
 	}
 	if len(s) != 2 || s[0] != "%arch" || s[1] != "amd64" {
 		t.Errorf("StringOrSlice = %v, want [%q, %q]", s, "%arch", "amd64")
@@ -31,7 +31,7 @@ func TestStringOrSlice_Slice(t *testing.T) {
 }
 
 func TestStringOrSlice_EmptyString(t *testing.T) {
-	var s StringOrSlice
+	var s Slice[string]
 	if err := json.Unmarshal([]byte(`""`), &s); err != nil {
 		t.Fatalf("unmarshal empty string: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestStringOrSlice_EmptyString(t *testing.T) {
 }
 
 func TestStringOrSlice_EmptyArray(t *testing.T) {
-	var s StringOrSlice
+	var s Slice[string]
 	if err := json.Unmarshal([]byte(`[]`), &s); err != nil {
 		t.Fatalf("unmarshal empty array: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestStringOrSlice_EmptyArray(t *testing.T) {
 }
 
 func TestStringOrSlice_Invalid(t *testing.T) {
-	var s StringOrSlice
+	var s Slice[string]
 	err := json.Unmarshal([]byte(`123`), &s)
 	if err == nil {
 		t.Error("unmarshal number: expected error")
@@ -268,12 +268,12 @@ func TestBoolOrString_String(t *testing.T) {
 func TestStringOrSlice_First(t *testing.T) {
 	tests := []struct {
 		name string
-		s    StringOrSlice
+		s    Slice[string]
 		want string
 	}{
-		{"single", StringOrSlice{"hello"}, "hello"},
-		{"multiple", StringOrSlice{"first", "second"}, "first"},
-		{"empty", StringOrSlice{}, ""},
+		{"single", Slice[string]{"hello"}, "hello"},
+		{"multiple", Slice[string]{"first", "second"}, "first"},
+		{"empty", Slice[string]{}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

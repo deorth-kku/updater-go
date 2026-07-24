@@ -41,8 +41,8 @@ func (m *mockDownloader) Get(_ context.Context, url string, _ map[string]string)
 	return &HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
 }
 
-func (m *mockDownloader) Post(_ context.Context, url string, _ []byte, _ map[string]string) (*HTTPResponse, error) {
-	return m.Get(context.Background(), url, nil)
+func (m *mockDownloader) Post(ctx context.Context, url string, _ []byte, _ map[string]string) (*HTTPResponse, error) {
+	return m.Get(ctx, url, nil)
 }
 
 func TestGitHubAPI_Latest(t *testing.T) {
@@ -195,29 +195,6 @@ func TestGitHubAPI_LatestByVersion_NotFound(t *testing.T) {
 	}
 }
 
-func TestFilterAssets(t *testing.T) {
-	assets := []Asset{
-		{URL: "a", Name: "PortableGit-2.47.0-64-bit.7z"},
-		{URL: "b", Name: "PortableGit-2.47.0-32-bit.7z"},
-		{URL: "c", Name: "Bundle-2.47.0.zip"},
-	}
-
-	got := FilterAssets(assets, []string{"64-bit"}, nil, "7z")
-	if len(got) != 1 || got[0].Name != "PortableGit-2.47.0-64-bit.7z" {
-		t.Errorf("FilterAssets() = %v, want [PortableGit-2.47.0-64-bit.7z]", got)
-	}
-
-	got = FilterAssets(assets, nil, []string{"32-bit"}, "7z")
-	if len(got) != 1 || got[0].Name != "PortableGit-2.47.0-64-bit.7z" {
-		t.Errorf("FilterAssets() exclude = %v", got)
-	}
-
-	got = FilterAssets(assets, nil, nil, "zip")
-	if len(got) != 1 || got[0].Name != "Bundle-2.47.0.zip" {
-		t.Errorf("FilterAssets() filetype = %v", got)
-	}
-}
-
 func TestAppveyorAPI_Latest(t *testing.T) {
 	history := appveyorHistory{
 		Builds: []appveyorBuild{
@@ -270,7 +247,7 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, config.DownloadConfig{Filetype: config.StringOrSlice{"exe"}}, mdl, slog.Default())
+	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, config.DownloadConfig{Filetype: config.Slice[string]{"exe"}}, mdl, slog.Default())
 
 	rel, err := api.Latest(t.Context())
 	if err != nil {
@@ -317,7 +294,7 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 		config.BasicConfig{APIURL: "https://skyline-builds.alula.gay/builds"},
 		config.DownloadConfig{
 			Path:     path,
-			Filetype: config.StringOrSlice{"apk"},
+			Filetype: config.Slice[string]{"apk"},
 		},
 		config.VersionConfig{Regex: "skyline-v(.*?)\\.apk"},
 		mdl,

@@ -1,9 +1,9 @@
 package api
 
 import (
-	"context"
 	"io"
 	"log/slog"
+	"path"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -12,32 +12,6 @@ import (
 // slogDiscard returns a slog.Logger that discards all output.
 func slogDiscard() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
-// TestSourceforge_FilenameCheck verifies the filename_check filter (gap #15).
-func TestSourceforge_FilenameCheck(t *testing.T) {
-	tests := []struct {
-		name      string
-		filename  string
-		keywords  []string
-		noKeyword []string
-		filetypes []string
-		want      bool
-	}{
-		{"match exe", "7z2400-x64.exe", []string{"x64"}, nil, []string{"exe"}, true},
-		{"missing keyword", "7z2400.exe", []string{"x64"}, nil, []string{"exe"}, false},
-		{"exclude keyword", "7z2400-beta.exe", []string{"x64"}, []string{"beta"}, []string{"exe"}, false},
-		{"filetype mismatch default7z", "7z2400-x64.exe", []string{"x64"}, nil, []string{"7z"}, false},
-		{"no keyword filetype only", "7z2400.7z", nil, nil, []string{"7z"}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sourceforgeFilenameCheck(tt.filename, tt.keywords, tt.noKeyword, tt.filetypes)
-			if got != tt.want {
-				t.Errorf("sourceforgeFilenameCheck(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
-	}
 }
 
 // TestSourceforge_Latest_Filtering verifies keyword/filetype/index matching
@@ -63,23 +37,28 @@ func TestSourceforge_Latest_Filtering(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := &SourceforgeAPI{
-		projectName: "sevenzip",
-		rssURL:      "https://sourceforge.net/projects/sevenzip/rss?path=/",
-		dlCfg: config.DownloadConfig{
-			Keyword:  config.StringOrSlice{"x64"},
-			Filetype: config.StringOrSlice{"exe"},
+	api := NewSourceforgeAPI(
+		config.BasicConfig{ProjectName: "sevenzip"},
+		config.DownloadConfig{
+			Keyword:  config.SimpleKeywords("x64"),
+			Filetype: config.Slice[string]{"exe"},
 			Index:    0,
 		},
-		downloader: mdl,
-		logger:     slogDiscard(),
-	}
-	rel, err := api.Latest(context.Background())
+		mdl,
+		slogDiscard(),
+	)
+	rel, err := api.Latest(t.Context())
 	if err != nil {
 		t.Fatalf("Latest() error = %v", err)
 	}
-	if rel.Assets[0].Name != "7z2401-x64.exe" {
-		t.Errorf("Asset.Name = %q, want %q", rel.Assets[0].Name, "7z2401-x64.exe")
+	basenameIs(t, rel, "7z2401-x64.exe")
+}
+
+func basenameIs(t *testing.T, rel *Release, name string) {
+	t.Helper()
+	base := path.Base(rel.URL)
+	if base != name {
+		t.Errorf("basename = %q, want %q", base, name)
 	}
 }
 
@@ -105,26 +84,23 @@ func TestSourceforgeAPI_LatestByVersion_Match(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := &SourceforgeAPI{
-		projectName: "sevenzip",
-		rssURL:      "https://sourceforge.net/projects/sevenzip/rss?path=/",
-		dlCfg: config.DownloadConfig{
-			Keyword:  config.StringOrSlice{"x64"},
-			Filetype: config.StringOrSlice{"exe"},
+	api := NewSourceforgeAPI(
+		config.BasicConfig{ProjectName: "sevenzip"},
+		config.DownloadConfig{
+			Keyword:  config.SimpleKeywords("x64"),
+			Filetype: config.Slice[string]{"exe"},
 		},
-		downloader: mdl,
-		logger:     slogDiscard(),
-	}
-	rel, err := api.LatestByVersion(context.Background(), "Tue, 02 Jan 2024 00:00:00 UT")
+		mdl,
+		slogDiscard(),
+	)
+	rel, err := api.LatestByVersion(t.Context(), "Tue, 02 Jan 2024 00:00:00 UT")
 	if err != nil {
 		t.Fatalf("LatestByVersion() error = %v", err)
 	}
 	if rel.Version != "Tue, 02 Jan 2024 00:00:00 UT" {
 		t.Errorf("Version = %q, want %q", rel.Version, "Tue, 02 Jan 2024 00:00:00 UT")
 	}
-	if rel.Assets[0].Name != "7z2400-x64.exe" {
-		t.Errorf("Asset.Name = %q, want %q", rel.Assets[0].Name, "7z2400-x64.exe")
-	}
+	basenameIs(t, rel, "7z2400-x64.exe")
 }
 
 // TestSourceforgeAPI_LatestByVersion_NotFound tests that an error is returned
@@ -142,17 +118,16 @@ func TestSourceforgeAPI_LatestByVersion_NotFound(t *testing.T) {
 	mdl := newMockDownloader()
 	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
 
-	api := &SourceforgeAPI{
-		projectName: "sevenzip",
-		rssURL:      "https://sourceforge.net/projects/sevenzip/rss?path=/",
-		dlCfg: config.DownloadConfig{
-			Keyword:  config.StringOrSlice{"x64"},
-			Filetype: config.StringOrSlice{"exe"},
+	api := NewSourceforgeAPI(
+		config.BasicConfig{ProjectName: "sevenzip"},
+		config.DownloadConfig{
+			Keyword:  config.SimpleKeywords("x64"),
+			Filetype: config.Slice[string]{"exe"},
 		},
-		downloader: mdl,
-		logger:     slogDiscard(),
-	}
-	rel, err := api.LatestByVersion(context.Background(), "Fri, 05 Jan 2024 00:00:00 UT")
+		mdl,
+		slogDiscard(),
+	)
+	rel, err := api.LatestByVersion(t.Context(), "Fri, 05 Jan 2024 00:00:00 UT")
 	if err == nil {
 		t.Fatalf("LatestByVersion() expected error, got %v", rel)
 	}

@@ -23,7 +23,7 @@ func hardcodedDefaults() ProjectConfig {
 			Keyword:              nil,
 			UpdateKeyword:        nil,
 			ExcludeKeyword:       nil,
-			Filetype:             StringOrSlice{"7z"},
+			Filetype:             Slice[string]{"7z"},
 			Regexes:              nil,
 			URL:                  "",
 			AddVersionToFilename: false,

@@ -17,7 +17,6 @@ import (
 	"github.com/deorth-kku/updater-go/internal/downloader"
 	"github.com/deorth-kku/updater-go/internal/extractor"
 	"github.com/deorth-kku/updater-go/internal/peversion"
-	"github.com/deorth-kku/updater-go/internal/platform"
 	"github.com/deorth-kku/updater-go/internal/process"
 )
 
@@ -430,67 +429,46 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 		return url
 	}
 
+	fs := api.NewFileSelector(u.projectCfg.Download, u.isInstallMode(), u.log().With("comp", "selector"))
+	idx := u.projectCfg.Download.Index
+	matchcount := 0
 	// For GitHub releases, filter assets by keywords and index
 	if len(rel.Assets) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
-		matched := fs.SelectFiles(assetNames(rel.Assets))
-		u.log().Debug("assets matched",
-			"total", len(rel.Assets),
-			"matched", len(matched),
-			"reason", "file selector filtered release assets",
-			"result", strings.Join(matched, ","),
-		)
-		// Apply index/indexes filtering
-		matched = u.applyIndex(matched)
-		u.log().Debug("index applied",
-			"index", u.projectCfg.Download.Index,
-			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
-			"reason", "matched assets filtered by download.index/indexes",
-			"result", strings.Join(matched, ","),
-		)
-		for _, name := range matched {
-			for _, a := range rel.Assets {
-				if a.Name == name {
-					u.log().Info("download URL selected",
-						"asset", name,
-						"reason", "matched asset chosen for download",
-						"result", a.URL,
-					)
-					return a.URL
-				}
+		for _, v := range rel.Assets {
+			if !fs.Match(v.Name) {
+				continue
 			}
+			if matchcount != idx {
+				matchcount++
+				continue
+			}
+			u.log().Info("download URL selected",
+				"asset", v.Name,
+				"reason", "matched asset chosen for download",
+				"result", v.URL,
+				"index", idx,
+			)
+			return v.URL
 		}
 	}
 
 	// For AppVeyor artifacts
 	if len(rel.Artifacts) > 0 {
-		fs := extractor.NewFileSelector(u.projectCfg.Download, u.projectCfg.Decompress, u.isInstallMode(), u.log().With("comp", "selector"))
-		matched := fs.SelectFiles(artifactNames(rel.Artifacts))
-		u.log().Debug("artifacts matched",
-			"total", len(rel.Artifacts),
-			"matched", len(matched),
-			"reason", "file selector filtered appveyor artifacts",
-			"result", strings.Join(matched, ","),
-		)
-		matched = u.applyIndex(matched)
-		u.log().Debug("index applied",
-			"index", u.projectCfg.Download.Index,
-			"indexes", fmt.Sprintf("%v", u.projectCfg.Download.Indexes),
-			"reason", "matched artifacts filtered by download.index/indexes",
-			"result", strings.Join(matched, ","),
-		)
-		for _, name := range matched {
-			for _, art := range rel.Artifacts {
-				if art.FileName == name {
-					url := rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + art.FileName
-					u.log().Info("download URL selected",
-						"artifact", name,
-						"reason", "matched appveyor artifact chosen for download",
-						"result", url,
-					)
-					return url
-				}
+		for _, v := range rel.Artifacts {
+			if !fs.Match(v.FileName) {
+				continue
 			}
+			if matchcount != idx {
+				matchcount++
+				continue
+			}
+			url := rel.BaseURL + "/buildjobs/" + rel.JobID + "/artifacts/" + v.FileName
+			u.log().Info("download URL selected",
+				"artifact", v.FileName,
+				"reason", "matched appveyor artifact chosen for download",
+				"result", url,
+			)
+			return url
 		}
 	}
 
@@ -529,31 +507,6 @@ func (u *Updater) isInstallMode() bool {
 		return err != nil
 	}
 	return u.entry.Version == ""
-}
-
-// applyIndex narrows a list of matched filenames to the element(s) selected by
-// the download.index / download.indexes config, mirroring updater-rpc's
-// getDlUrl behaviour for github/appveyor backends.
-//
-// When download.indexes is set, each entry selects one filename (0-based).
-// Otherwise, when download.index is set, only the single filename at that
-// 0-based position is returned (Python returns match_urls[index] — a single
-// element, not a slice from that position onward).
-func (u *Updater) applyIndex(matched []string) []string {
-	if len(u.projectCfg.Download.Indexes) > 0 {
-		var indexed []string
-		for _, idx := range u.projectCfg.Download.Indexes {
-			if idx >= 0 && idx < len(matched) {
-				indexed = append(indexed, matched[idx])
-			}
-		}
-		return indexed
-	}
-	if u.projectCfg.Download.Index > 0 && u.projectCfg.Download.Index < len(matched) {
-		// Python is 0-based: match_urls[index]. Return exactly that element.
-		return matched[u.projectCfg.Download.Index : u.projectCfg.Download.Index+1]
-	}
-	return matched
 }
 
 // artifactNames returns the file names of all artifacts.
@@ -630,6 +583,3 @@ func addVersionToName(name, version string, filetypes []string) string {
 	}
 	return name
 }
-
-// Ensure platform is used
-var _ = platform.ArchName

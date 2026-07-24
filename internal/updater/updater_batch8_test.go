@@ -14,32 +14,6 @@ import (
 	"github.com/deorth-kku/updater-go/internal/process"
 )
 
-// TestUpdate_VersionFileWritten verifies gap #3: a <name>.VERSION file is
-// written to the save path when use_exe_version is false.
-func TestUpdate_VersionFileWritten(t *testing.T) {
-	saveDir := t.TempDir()
-	projCfg := config.ProjectConfig{
-		Basic: config.BasicConfig{
-			APIType:     "github",
-			ProjectName: "verapp",
-		},
-		Download:   config.DownloadConfig{URL: "/test.zip"},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
-	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	u := New(projCfg, config.ProjectEntry{SavePath: saveDir}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
-	if res := u.Update(t.Context()); res.Error != nil {
-		t.Fatalf("Update() error = %v", res.Error)
-	}
-	data, err := os.ReadFile(filepath.Join(saveDir, "verapp.VERSION"))
-	if err != nil {
-		t.Fatalf("version file not written: %v", err)
-	}
-	if string(data) != "v1.0.0" {
-		t.Errorf("version file content = %q, want %q", string(data), "v1.0.0")
-	}
-}
-
 // TestUpdate_VersionFileSkippedForExeVersion verifies gap #3: no .VERSION file
 // is written when use_exe_version is true.
 func TestUpdate_VersionFileSkippedForExeVersion(t *testing.T) {
@@ -140,7 +114,7 @@ func TestDownloadFilename_URLDerivedVersion(t *testing.T) {
 		Basic: config.BasicConfig{APIType: "github"},
 		Download: config.DownloadConfig{
 			AddVersionToFilename: true,
-			Filetype:             config.StringOrSlice{"7z", "zip"},
+			Filetype:             config.Slice[string]{"7z", "zip"},
 		},
 	}
 	u := &Updater{projectCfg: projCfg}

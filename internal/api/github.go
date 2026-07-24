@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/deorth-kku/updater-go/internal/config"
 )
@@ -236,36 +235,4 @@ func (g *GitHubAPI) buildRelease(rel githubRelease, version string) *Release {
 		})
 	}
 	return r
-}
-
-// FilterAssets filters release assets by keywords, exclude keywords, and filetype.
-func FilterAssets(assets []Asset, keywords []string, excludeKeywords []string, filetype string) []Asset {
-	var result []Asset
-	for _, a := range assets {
-		if matchesAsset(a.Name, keywords, excludeKeywords, filetype) {
-			result = append(result, a)
-		}
-	}
-	return result
-}
-
-// matchesAsset checks if a filename matches the keyword/exclude/filetype criteria.
-func matchesAsset(name string, keywords, excludeKeywords []string, filetype string) bool {
-	if filetype != "" {
-		ext := "." + strings.TrimPrefix(filetype, ".")
-		if !strings.HasSuffix(strings.ToLower(name), ext) {
-			return false
-		}
-	}
-	for _, ek := range excludeKeywords {
-		if strings.Contains(strings.ToLower(name), strings.ToLower(ek)) {
-			return false
-		}
-	}
-	for _, k := range keywords {
-		if !strings.Contains(strings.ToLower(name), strings.ToLower(k)) {
-			return false
-		}
-	}
-	return true
 }
