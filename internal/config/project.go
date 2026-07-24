@@ -166,16 +166,16 @@ type Slice[T any] []T
 
 // UnmarshalJSON implements custom unmarshaling for StringOrSlice.
 func (s *Slice[T]) UnmarshalJSON(data []byte) error {
-	// Try string first
-	var str T
-	if err := json.Unmarshal(data, &str); err == nil {
-		*s = []T{str}
-		return nil
-	}
-	// Try array
+	// Try array first
 	var arr []T
 	if err := json.Unmarshal(data, &arr); err == nil {
 		*s = arr
+		return nil
+	}
+	// Try element
+	var str T
+	if err := json.Unmarshal(data, &str); err == nil {
+		*s = []T{str}
 		return nil
 	}
 	return fmt.Errorf("keyword must be string or []string, got %s", string(data))
