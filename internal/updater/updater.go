@@ -453,6 +453,7 @@ func (u *Updater) selectDownloadURL(rel *api.Release) string {
 	}
 
 	// For AppVeyor artifacts
+	matchcount = 0
 	if len(rel.Artifacts) > 0 {
 		for _, v := range rel.Artifacts {
 			if !fs.Match(v.FileName) {
