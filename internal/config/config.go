@@ -96,7 +96,7 @@ type RequestsConfig struct {
 }
 
 func (r RequestsConfig) GetTimeout() time.Duration {
-	return time.Duration(r.Timeout) * time.Second
+	return time.Duration(r.Timeout * float64(time.Second))
 }
 
 // Aria2Config configures the aria2 RPC connection.
@@ -216,30 +216,28 @@ func ProjectConfigPath(root, name string) string {
 	return filepath.Join(root, "config", name+".json")
 }
 
-// ApplyDefaults merges the project-level defaults into pc.
+// GetProjectConfig merges the project-level defaults into pc.
 // The merge order is: hardcoded defaults → Config.Defaults → file contents.
 // This matches the Python pattern of unmarshal-over.
 //
 // pcFileBytes is the raw JSON bytes from the project config file.
 // defaults is the "defaults" field from the main config.json (may be nil).
-func ApplyDefaults(pc *ProjectConfig, pcFileBytes, defaults json.RawMessage) error {
+func GetProjectConfig(pcFileBytes, defaults json.RawMessage) (*ProjectConfig, error) {
 	// 1. Start with hardcoded defaults
 	base := hardcodedDefaults()
 
 	// 2. Overlay Config.Defaults (project-level defaults from main config)
 	if len(defaults) > 0 {
 		if err := json.Unmarshal(defaults, &base); err != nil {
-			return fmt.Errorf("unmarshal defaults: %w", err)
+			return nil, fmt.Errorf("unmarshal defaults: %w", err)
 		}
 	}
 
 	// 3. Overlay the actual project config file on top
 	if len(pcFileBytes) > 0 {
 		if err := json.Unmarshal(pcFileBytes, &base); err != nil {
-			return fmt.Errorf("unmarshal project config: %w", err)
+			return nil, fmt.Errorf("unmarshal project config: %w", err)
 		}
 	}
-
-	*pc = base
-	return nil
+	return &base, nil
 }

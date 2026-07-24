@@ -130,7 +130,7 @@ func (u *Updater) needUpdateByExe(remote string) (bool, string) {
 
 // Update runs the full update flow for the project.
 func (u *Updater) Update(ctx context.Context) *UpdateResult {
-	result := &UpdateResult{ProjectName: u.projectCfg.Basic.ProjectName, OldVersion: u.entry.Version}
+	result := &UpdateResult{ProjectName: u.entry.Name, OldVersion: u.entry.Version}
 	// Step 1: Detect latest version via API
 	apiAdapter, err := api.NewAPI(u.projectCfg.Basic, u.projectCfg.Download, u.projectCfg.Version, u.projectCfg.Build, u.httpDL, u.log())
 	if err != nil {

@@ -35,6 +35,7 @@ var (
 	flagLogLevel string
 	flagPath     string
 	flagRollback string
+	flagTest     string
 )
 
 func main() {
@@ -53,7 +54,8 @@ func main() {
 	rootCmd.Flags().StringVarP(&flagLogFile, "log-file", "", "stderr", "log file path, 'stderr' for standard error")
 	rootCmd.Flags().StringVarP(&flagLogLevel, "log-level", "", "INFO", "log level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 	rootCmd.Flags().StringVarP(&flagPath, "path", "p", "", "install path for added project (e.g. --path /opt/tools)")
-	rootCmd.Flags().StringVarP(&flagRollback, "rollback", "t", "", "rollback to a specific version (e.g. --rollback 2.46.0)")
+	rootCmd.Flags().StringVarP(&flagRollback, "rollback", "r", "", "rollback to a specific version (e.g. --rollback 2.46.0)")
+	rootCmd.Flags().StringVarP(&flagTest, "test", "t", "", "test given project config")
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -88,19 +90,15 @@ func run(cmd *cobra.Command, args []string) error {
 		"result", logLevel.String(),
 	)
 
-	// Acquire single-instance lock
-	lock, err := instance.New("")
-	if err != nil {
-		logger.Error("another instance is running", "error", err)
-		return err
-	}
-	defer lock.Close()
-	logger.Info("instance lock acquired",
-		"path", lock.Path(),
-		"reason", "single-instance lock to prevent concurrent updates",
-		"result", "ok",
-	)
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	// Handle signals
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var err error
 	// Resolve config path
 	configPath := resolveConfigPath()
 	logger.Info("config path resolved",
@@ -130,6 +128,43 @@ func run(cmd *cobra.Command, args []string) error {
 			"result", "ok",
 		)
 	}
+
+	// Create HTTP downloader for metadata
+	httpDL := api.NewHTTPClientWithProxy(cfg.Requests.GetTimeout(), cfg.Requests.Proxy, cfg.Requests.Retry)
+
+	if cmd.Flags().Changed("test") {
+		data, err := os.ReadFile(flagTest)
+		if err != nil {
+			return fmt.Errorf("read project config %s: %w", flagTest, err)
+		}
+		pc, err := config.GetProjectConfig(data, nil)
+		if err != nil {
+			return fmt.Errorf("parse project config %s: %w", flagTest, err)
+		}
+		call, err := api.NewAPI(pc.Basic, pc.Download, pc.Version, pc.Build, httpDL, logger)
+		if err != nil {
+			return fmt.Errorf("failed to build api: %w", err)
+		}
+		rel, err := call.Latest(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get the latest release: %w", err)
+		}
+		logger.Info("selected release", "version", rel.Version, "url", rel.URL, "assets", rel.Assets, "artifacts", rel.Artifacts)
+		return nil
+	}
+
+	// Acquire single-instance lock
+	lock, err := instance.New("")
+	if err != nil {
+		logger.Error("another instance is running", "error", err)
+		return err
+	}
+	defer lock.Close()
+	logger.Info("instance lock acquired",
+		"path", lock.Path(),
+		"reason", "single-instance lock to prevent concurrent updates",
+		"result", "ok",
+	)
 
 	// Handle --path flag: add project and update
 	if flagPath != "" {
@@ -166,14 +201,6 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle signals
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	// Create aria2 downloader with fallback to local aria2c subprocess
 	addr := cfg.Aria2.RPCAddr()
 	dlLogger := logger.With("component", "downloader")
@@ -192,9 +219,6 @@ func run(cmd *cobra.Command, args []string) error {
 	if localAria2 != nil {
 		defer localAria2.Stop()
 	}
-
-	// Create HTTP downloader for metadata
-	httpDL := api.NewHTTPClientWithProxy(cfg.Requests.GetTimeout(), cfg.Requests.Proxy, cfg.Requests.Retry)
 
 	// Load metadata from repositories
 	var metaStore *metadata.Store
@@ -301,7 +325,6 @@ func run(cmd *cobra.Command, args []string) error {
 			result := u.Update(ctx)
 			mu.Lock()
 			defer mu.Unlock()
-			result.ProjectName = proj.Name
 			results = append(results, result)
 			if result.Error != nil {
 				logger.Error("update failed", "project", proj.Name, "error", result.Error)
@@ -456,17 +479,7 @@ func loadProjectConfig(configRoot, name string, defaults json.RawMessage) (*conf
 	localPath := config.ProjectConfigPath(configRoot, name)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read project config %s: %w", localPath, err)
 	}
-	var pc config.ProjectConfig
-	if err := json.Unmarshal(data, &pc); err != nil {
-		return nil, fmt.Errorf("unmarshal project config %s: %w", localPath, err)
-	}
-	if err := config.ApplyDefaults(&pc, data, defaults); err != nil {
-		return nil, fmt.Errorf("apply defaults for %s: %w", name, err)
-	}
-	return &pc, nil
+	return config.GetProjectConfig(data, defaults)
 }

@@ -116,18 +116,14 @@ func TestProjectConfig_Unmarshal_AllSubdirs(t *testing.T) {
 	}
 }
 
-// TestProjectConfig_ApplyDefaults verifies that ApplyDefaults fills in missing fields
+// TestProjectConfig_GetProjectConfig verifies that GetProjectConfig fills in missing fields
 // using hardcoded defaults and Config.Defaults.
-func TestProjectConfig_ApplyDefaults(t *testing.T) {
+func TestProjectConfig_GetProjectConfig(t *testing.T) {
 	// Minimal config — only basic.api_type set
 	data := []byte(`{"basic": {"api_type": "github", "account_name": "test", "project_name": "test"}}`)
-	var pc ProjectConfig
-	if err := json.Unmarshal(data, &pc); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if err := ApplyDefaults(&pc, data, nil); err != nil {
-		t.Fatalf("ApplyDefaults: %v", err)
+	pc, err := GetProjectConfig(data, nil)
+	if err != nil {
+		t.Fatalf("GetProjectConfig: %v", err)
 	}
 
 	// TryRedirect should default to true
@@ -148,17 +144,14 @@ func TestProjectConfig_ApplyDefaults(t *testing.T) {
 	}
 }
 
-// TestProjectConfig_ApplyDefaults_WithDefaults verifies that Config.Defaults overlay works.
-func TestProjectConfig_ApplyDefaults_WithDefaults(t *testing.T) {
+// TestProjectConfig_GetProjectConfig_WithDefaults verifies that Config.Defaults overlay works.
+func TestProjectConfig_GetProjectConfig_WithDefaults(t *testing.T) {
 	data := []byte(`{"basic": {"api_type": "github", "account_name": "test", "project_name": "test"}}`)
-	var pc ProjectConfig
-	if err := json.Unmarshal(data, &pc); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
 	defaults := json.RawMessage(`{"download": {"try_redirect": false}, "process": {"restart_wait": 5}}`)
-	if err := ApplyDefaults(&pc, data, defaults); err != nil {
-		t.Fatalf("ApplyDefaults: %v", err)
+
+	pc, err := GetProjectConfig(data, defaults)
+	if err != nil {
+		t.Fatalf("GetProjectConfig: %v", err)
 	}
 
 	if pc.Download.TryRedirect {

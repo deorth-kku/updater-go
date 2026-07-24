@@ -194,8 +194,8 @@ func TestLoad_RealConfig_Unmarshal(t *testing.T) {
 	}
 }
 
-// TestLoad_RealConfig_ApplyDefaults applies defaults to real project configs from all subdirectories.
-func TestLoad_RealConfig_ApplyDefaults(t *testing.T) {
+// TestLoad_RealConfig_GetProjectConfig applies defaults to real project configs from all subdirectories.
+func TestLoad_RealConfig_GetProjectConfig(t *testing.T) {
 	subdirs, err := os.ReadDir(updaterConfigDir)
 	if err != nil {
 		t.Fatalf("read updater-config dir: %v", err)
@@ -221,17 +221,13 @@ func TestLoad_RealConfig_ApplyDefaults(t *testing.T) {
 					t.Fatalf("read %s: %v", entry.Name(), err)
 				}
 
-				var pc ProjectConfig
-				if err := json.Unmarshal(data, &pc); err != nil {
-					t.Fatalf("unmarshal %s: %v", entry.Name(), err)
-				}
-
-				if err := ApplyDefaults(&pc, data, nil); err != nil {
-					t.Fatalf("ApplyDefaults %s: %v", entry.Name(), err)
+				pc, err := GetProjectConfig(data, nil)
+				if err != nil {
+					t.Fatalf("GetProjectConfig %s: %v", entry.Name(), err)
 				}
 
 				if pc.Basic.APIType == "" {
-					t.Error("APIType is empty after ApplyDefaults")
+					t.Error("APIType is empty after GetProjectConfig")
 				}
 			})
 		}
