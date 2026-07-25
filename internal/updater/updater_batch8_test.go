@@ -24,7 +24,7 @@ func TestUpdate_VersionFileSkippedForExeVersion(t *testing.T) {
 			ProjectName: "verapp",
 		},
 		Download:   config.DownloadConfig{URL: "/test.zip"},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 		Version:    config.VersionConfig{UseExeVersion: true},
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -56,7 +56,7 @@ func TestUpdate_PostCmdsExecuted(t *testing.T) {
 			ProjectName: "pcmd",
 		},
 		Download:   config.DownloadConfig{URL: "/test.zip"},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 		PostCmds:   []string{cmd},
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -192,7 +192,7 @@ func TestUpdate_WaitForProcessExit(t *testing.T) {
 			ProjectName: "waitapp",
 		},
 		Download:   config.DownloadConfig{URL: "/test.zip"},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 		Process: config.ProcessConfig{
 			ImageName:    "sleeper",
 			AllowRestart: false,

@@ -131,7 +131,7 @@ func TestProjectConfig_GetProjectConfig(t *testing.T) {
 		t.Error("TryRedirect should default to true")
 	}
 	// Decompress.Skip should default to false
-	if pc.Decompress.Skip.Bool() {
+	if pc.Decompress.Skip {
 		t.Error("Decompress.Skip should default to false")
 	}
 	// Process.AllowRestart should default to false

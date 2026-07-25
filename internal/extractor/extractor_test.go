@@ -19,10 +19,7 @@ import (
 // defaultDecompressConfig returns the default DecompressConfig used by all tests.
 func defaultDecompressConfig(exclude ...string) config.DecompressConfig {
 	return config.DecompressConfig{
-		Skip:            config.BoolOrString{BoolVal: false},
 		ExcludeFileType: exclude,
-		SingleDir:       config.BoolOrString{BoolVal: false},
-		CleanInstall:    false,
 	}
 }
 
@@ -623,7 +620,7 @@ func TestDecompressor_Skip_True(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := defaultDecompressConfig()
-	cfg.Skip = config.BoolOrString{BoolVal: true}
+	cfg.Skip = true
 	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -704,7 +701,7 @@ func TestDecompressor_Nop(t *testing.T) {
 
 	destDir := t.TempDir()
 	cfg := config.DecompressConfig{
-		Skip: config.BoolOrString{BoolVal: true},
+		Skip: true,
 	}
 	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
 	if err != nil {

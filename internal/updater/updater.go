@@ -315,7 +315,7 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	}
 
 	// Step 5: Extract
-	if !u.projectCfg.Decompress.Skip.Bool() {
+	if !u.projectCfg.Decompress.Skip {
 		u.log().Info("extracting archive",
 			"path", localPath,
 			"reason", "decompress not skipped",

@@ -44,7 +44,6 @@ func hardcodedDefaults() ProjectConfig {
 			Regex:         "",
 		},
 		Decompress: DecompressConfig{
-			Skip:                      BoolOrString{BoolVal: false},
 			IncludeFileType:           nil,
 			ExcludeFileType:           nil,
 			ExcludeFileTypeWhenUpdate: nil,
@@ -53,6 +52,7 @@ func hardcodedDefaults() ProjectConfig {
 			UseBuiltinZipfile:         false,
 			UseSystemPackageManager:   false,
 			CleanInstall:              false,
+			Skip:                      false,
 		},
 		Process: ProcessConfig{
 			ImageName:    "",

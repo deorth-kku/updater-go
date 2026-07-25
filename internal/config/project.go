@@ -111,13 +111,13 @@ type DownloadConfig struct {
 	Filetype             Slice[string]      `json:"filetype,omitzero"` // string or []string
 	Regexes              []string           `json:"regexes,omitzero"`
 	URL                  string             `json:"url,omitzero"`
-	AddVersionToFilename bool               `json:"add_version_to_filename,omitzero"`
 	FilenameOverride     string             `json:"filename_override,omitzero"`
 	Path                 []StringOrJsonPath `json:"path,omitzero"` // for apijson: URL prefix + JSON path segments
 	Index                int                `json:"index,omitzero"`
 	Indexes              []int              `json:"indexes,omitzero"`
-	TryRedirect          bool               `json:"try_redirect,omitzero"`
 	Data                 map[string]any     `json:"data,omitzero"`
+	TryRedirect          bool               `json:"try_redirect,omitzero"`
+	AddVersionToFilename bool               `json:"add_version_to_filename,omitzero"`
 }
 
 // VersionConfig controls how the version string is extracted.
@@ -133,7 +133,6 @@ type VersionConfig struct {
 
 // DecompressConfig controls post-download extraction behavior.
 type DecompressConfig struct {
-	Skip                      BoolOrString `json:"skip,omitzero"`
 	IncludeFileType           []string     `json:"include_file_type,omitzero"`
 	ExcludeFileType           []string     `json:"exclude_file_type,omitzero"`
 	ExcludeFileTypeWhenUpdate []string     `json:"exclude_file_type_when_update,omitzero"`
@@ -142,6 +141,7 @@ type DecompressConfig struct {
 	UseBuiltinZipfile         bool         `json:"use_builtin_zipfile,omitzero"`
 	UseSystemPackageManager   bool         `json:"use_system_package_manager,omitzero"`
 	CleanInstall              bool         `json:"clean_install,omitzero"`
+	Skip                      bool         `json:"skip,omitzero"`
 }
 
 // ProcessConfig controls process restart behavior.

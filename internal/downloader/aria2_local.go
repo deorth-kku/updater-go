@@ -156,6 +156,7 @@ func NewAria2DownloaderOrLocal(ctx context.Context, addr, secret, remoteDir, loc
 			"addr", addr,
 			"reason", "connected but GetVersion failed",
 			"result", "fallback to local",
+			"err", err,
 		)
 		goto try_local
 	}

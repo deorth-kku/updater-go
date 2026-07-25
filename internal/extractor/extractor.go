@@ -86,7 +86,7 @@ func (d *Decompressor) log() *slog.Logger {
 
 // Extract decompresses the given file to the destination directory.
 func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
-	if d.cfg.Skip.Bool() {
+	if d.cfg.Skip {
 		d.log().Info("extraction skipped",
 			"dest", destDir,
 			"reason", "decompress.skip enabled",
@@ -132,21 +132,23 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 
 	// The inner-file selector predicate (prefix + include + exclude) applied
 	// during extraction (gaps #10, #11, #12).
-	sel := &innerSelector{prefix: prefix, include: include, exclude: exclude, logger: d.log()}
+	sel := &innerSelector{prefix: prefix, include: include, exclude: exclude}
 
+	var err error
 	switch {
 	case d.cfg.SingleDir.IsString:
-		return d.extractWithSingleDir(ctx, prefix, sel, destDir)
+		err = d.extractWithSingleDir(ctx, prefix, sel, destDir)
 	case d.cfg.SingleDir.Bool():
-		return d.extractWithSingleDirAuto(ctx, sel, destDir)
+		err = d.extractWithSingleDirAuto(ctx, sel, destDir)
+	default:
+		d.log().Info("extraction mode",
+			"dest", destDir,
+			"reason", "no single_dir, extract directly to dest",
+			"result", "direct",
+		)
+		err = d.extractFile(ctx, destDir, sel)
 	}
-
-	d.log().Info("extraction mode",
-		"dest", destDir,
-		"reason", "no single_dir, extract directly to dest",
-		"result", "direct",
-	)
-	if err := d.extractFile(ctx, destDir, sel); err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -168,6 +170,9 @@ func (d *Decompressor) Extract(ctx context.Context, destDir string) error {
 					"result", "renamed",
 				)
 			}
+			d.log().Info("chmod for target", "to", target, "err", os.Chmod(target, 0755))
+		} else {
+			d.log().Debug("not using single-file rename mode", "len", len(selected))
 		}
 	}
 	return nil
@@ -267,7 +272,6 @@ type innerSelector struct {
 	prefix    string
 	include   []string
 	exclude   []string
-	logger    *slog.Logger
 	extracted []string
 }
 
@@ -299,6 +303,7 @@ func (s *innerSelector) shouldSkipFile(name string) bool {
 			return true
 		}
 	}
+	s.extracted = append(s.extracted, name)
 	return false
 }
 
@@ -359,8 +364,14 @@ func which(name string) string {
 // extractFile extracts (or copies) srcPath into destDir, auto-detecting the
 // archive format. Non-archive files are copied verbatim into destDir.
 func (d *Decompressor) extractFile(ctx context.Context, destDir string, skip skipper) error {
+	base := filepath.Base(d.f.Name())
 	if d.extract == nil {
-		return copyFile(d.f.Name(), filepath.Join(destDir, filepath.Base(d.f.Name())))
+		if skip.shouldSkipFile(base) {
+			return fmt.Errorf("non-compressed file but no file to copy: %s", base)
+		}
+		dest := filepath.Join(destDir, base)
+		d.log().Info("used copy file on non-compressed file", "src", d.f.Name(), "dst", dest)
+		return copyF(d.f, dest)
 	}
 	return d.extract.Extract(ctx, d.f, makeHandler(destDir, skip, d.log()))
 }
@@ -410,10 +421,6 @@ func makeHandler(destDir string, skip skipper, logger *slog.Logger) archives.Fil
 
 		if _, err := io.Copy(out, rc); err != nil {
 			return err
-		}
-
-		if sel, ok := skip.(*innerSelector); ok && !fi.IsDir() {
-			sel.extracted = append(sel.extracted, name)
 		}
 		return nil
 	}

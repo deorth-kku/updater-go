@@ -57,7 +57,7 @@ func TestUpdate_FullFlow(t *testing.T) {
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -107,7 +107,7 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 	}
 
 	// Write initial config
@@ -144,7 +144,7 @@ func TestUpdate_ProcessRestart(t *testing.T) {
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 		Process: config.ProcessConfig{
 			ImageName:    "test-app",
 			AllowRestart: true,
@@ -171,7 +171,7 @@ func TestUpdate_CustomStopStartCmd(t *testing.T) {
 		Download: config.DownloadConfig{
 			URL: "/test.zip",
 		},
-		Decompress: config.DecompressConfig{Skip: config.BoolOrString{BoolVal: true}},
+		Decompress: config.DecompressConfig{Skip: true},
 		Process: config.ProcessConfig{
 			ImageName:    "test-app",
 			AllowRestart: true,
