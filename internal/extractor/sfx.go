@@ -15,6 +15,7 @@ import (
 
 const (
 	searchLimit = 2 * 1024 * 1024
+	peakHeader  = 4096
 )
 
 // sevenZipMagic is the 7z format signature that marks the start of a 7z stream.
@@ -55,7 +56,8 @@ func (s SFX) match(ctx context.Context, stream io.Reader) (int64, string) {
 		rdat.expandTo(searchLimit)
 		off, name = findSfxOffsetInData(rdat.buf)
 	} else {
-		rdat.expandTo(off + 4096)
+		rdat.expandTo(off + peakHeader)
+		off += installOffset(rdat.buf[off:])
 		if len(rdat.buf) > int(off) {
 			name = s.findname(ctx, func() io.Reader {
 				return bytes.NewReader(rdat.buf[off:])
@@ -63,6 +65,16 @@ func (s SFX) match(ctx context.Context, stream io.Reader) (int64, string) {
 		}
 	}
 	return off, name
+}
+
+const install = ";!@InstallEnd@!\n"
+
+func installOffset(data []byte) int64 {
+	install_offset, found := findSfxOffsetInDataWithMagic(data, []byte(install))
+	if !found {
+		return 0
+	}
+	return install_offset + int64(len(install))
 }
 
 func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {
@@ -112,6 +124,11 @@ func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int6
 	if off == 0 {
 		// bytes search fallback
 		return findSfxOffsetBytesSearch(r)
+	}
+	data := make([]byte, peakHeader)
+	n, err := r.ReadAt(data, off)
+	if err == nil || errors.Is(err, io.EOF) {
+		off += installOffset(data[:n])
 	}
 	return off, s.findname(ctx, func() io.Reader {
 		return seekReader(r, off)
