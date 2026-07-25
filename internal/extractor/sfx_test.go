@@ -29,7 +29,7 @@ func TestFindSfxOffset(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ty := findSfxOffset(f)
+	offset, ty := sfxMatcher.match(t.Context(), f)
 	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find the 7z signature")
 	}
@@ -53,7 +53,7 @@ func TestFindSfxOffset_ShortHeaderAtEnd(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ty := findSfxOffset(f)
+	offset, ty := sfxMatcher.match(t.Context(), f)
 	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find trailing 7z signature")
 	}
@@ -81,7 +81,7 @@ func TestFindSfxOffset_WithStub(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ty := findSfxOffset(f)
+	offset, ty := sfxMatcher.match(t.Context(), f)
 	if ty != sevenZipSfx {
 		t.Fatal("findSfxOffset() expected to find the embedded 7z signature")
 	}
@@ -104,7 +104,7 @@ func TestFindSfxOffset_NotASfx(t *testing.T) {
 	}
 	defer f.Close()
 
-	_, ty := findSfxOffset(f)
+	_, ty := sfxMatcher.match(t.Context(), f)
 	if ty != notSfx {
 		t.Error("findSfxOffset() expected false for non-SFX file")
 	}
@@ -234,7 +234,7 @@ func TestFindSfxOffset_Zip(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ty := findSfxOffset(f)
+	offset, ty := sfxMatcher.match(t.Context(), f)
 	if ty != zipSfx {
 		t.Fatal("findSfxOffset() expected to find trailing zip signature")
 	}

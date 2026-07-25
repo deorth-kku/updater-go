@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"maps"
-	"os"
 	"strings"
 	_ "unsafe"
 
@@ -25,10 +24,13 @@ var (
 )
 
 //go:linkname formats github.com/mholt/archives.formats
-var formats map[string]archives.Format
+var (
+	formats    map[string]archives.Format
+	sfxMatcher = SFX(maps.Clone(formats))
+)
 
 func init() {
-	archives.RegisterFormat(SFX(maps.Clone(formats)))
+	archives.RegisterFormat(sfxMatcher)
 }
 
 type sfxSeekReaderAt interface {
@@ -45,13 +47,7 @@ func (SFX) Extension() string {
 
 func (SFX) MediaType() string { return "application/x-msdownload" }
 
-func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {
-	var mr archives.MatchResult
-
-	if filename != "" && !strings.HasSuffix(strings.ToLower(filename), ".exe") {
-		return mr, nil
-	}
-
+func (s SFX) match(ctx context.Context, stream io.Reader) (int64, string) {
 	rdat := NewCachedReaderAt(stream)
 	off := findSfxOffsetPE(rdat)
 	var name string
@@ -66,7 +62,17 @@ func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (arch
 			})
 		}
 	}
+	return off, name
+}
 
+func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {
+	var mr archives.MatchResult
+
+	if filename != "" && !strings.HasSuffix(strings.ToLower(filename), ".exe") {
+		return mr, nil
+	}
+
+	off, name := s.match(ctx, stream)
 	if name == "" || off == 0 {
 		return mr, nil
 	}
@@ -76,18 +82,12 @@ func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (arch
 	return mr, nil
 }
 
-func resetAndSection(stream sfxSeekReaderAt, offset int64) io.Reader {
-	size, err := stream.Seek(0, io.SeekEnd)
+func seekReader(stream sfxSeekReaderAt, offset int64) io.Reader {
+	_, err := stream.Seek(offset, io.SeekStart)
 	if err != nil {
 		return nil
 	}
-	if _, err := stream.Seek(0, io.SeekStart); err != nil {
-		return nil
-	}
-	if offset >= size {
-		return nil
-	}
-	return io.NewSectionReader(stream, offset, size-offset)
+	return stream
 }
 
 func (s SFX) findname(ctx context.Context, streamf func() io.Reader) string {
@@ -111,10 +111,10 @@ func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int6
 	off := findSfxOffsetPE(r)
 	if off == 0 {
 		// bytes search fallback
-		return findSfxOffsetReaderAt(r)
+		return findSfxOffsetBytesSearch(r)
 	}
 	return off, s.findname(ctx, func() io.Reader {
-		return resetAndSection(r, off)
+		return seekReader(r, off)
 	})
 }
 
@@ -134,19 +134,11 @@ func (sfx SFX) Extract(ctx context.Context, archive io.Reader, handleFile archiv
 	if !ok {
 		return archives.NoMatch
 	}
-	sec := resetAndSection(file, off)
+	sec := seekReader(file, off)
 	if sec == nil {
 		return errReaderAt
 	}
 	return arc.Extract(ctx, sec, handleFile)
-}
-
-// findSfxOffset locates the embedded archive payload in an SFX file. It
-// prefers debug/pe parsing of the PE section table for an accurate offset,
-// falling back to brute-force signature scanning when the file is not a valid
-// PE or the section table doesn't point to a known archive signature.
-func findSfxOffset(f *os.File) (int64, string) {
-	return findSfxOffsetReaderAt(f)
 }
 
 const (
@@ -155,10 +147,10 @@ const (
 	zipSfx      = "zip"
 )
 
-// findSfxOffsetReaderAt locates the embedded archive payload in an SFX file.
+// findSfxOffsetBytesSearch locates the embedded archive payload in an SFX file.
 // It first tries debug/pe to parse the PE header for an accurate offset, then
 // falls back to brute-force signature scanning for non-PE or malformed files.
-func findSfxOffsetReaderAt(r io.ReaderAt) (int64, string) {
+func findSfxOffsetBytesSearch(r io.ReaderAt) (int64, string) {
 	data := make([]byte, searchLimit)
 	n, err := r.ReadAt(data, 0)
 	if err != nil && err != io.EOF {
