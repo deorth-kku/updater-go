@@ -127,47 +127,9 @@ func TestFindSfxOffsetPE_Zip(t *testing.T) {
 	}
 	defer f.Close()
 
-	offset, ty := findSfxOffsetPE(f)
-	if ty != zipSfx {
-		t.Fatalf("findSfxOffsetPE() expected to find zip SFX, got %d", ty)
-	}
+	offset := findSfxOffsetPE(f)
 	if offset != 154624 {
 		t.Errorf("findSfxOffsetPE() = %d, want 154624", offset)
-	}
-}
-
-func TestFindSfxOffsetPE_7z(t *testing.T) {
-	// Build a 7z SFX by taking the PE portion of the ReShade file and
-	// appending 7z magic + payload after the last PE section.
-	checkFile(t)
-	data, err := os.ReadFile(testZipSfx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// The PE sections end at offset 154624 (verified by TestFindSfxOffsetPE_Zip).
-	const peEnd = 154624
-	sfxData := append(data[:peEnd], sevenZipMagic...)
-	sfxData = append(sfxData, []byte("7z payload data")...)
-
-	tmpDir := t.TempDir()
-	sfxPath := filepath.Join(tmpDir, "test_7z_sfx.exe")
-	if err := os.WriteFile(sfxPath, sfxData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := os.Open(sfxPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-
-	offset, ty := findSfxOffsetPE(f)
-	if ty != sevenZipSfx {
-		t.Fatalf("findSfxOffsetPE() expected to find 7z SFX, got %d", ty)
-	}
-	if offset != peEnd {
-		t.Errorf("findSfxOffsetPE() = %d, want %d", offset, peEnd)
 	}
 }
 
@@ -185,8 +147,8 @@ func TestFindSfxOffsetPE_NotAPe(t *testing.T) {
 	}
 	defer f.Close()
 
-	_, ty := findSfxOffsetPE(f)
-	if ty != notSfx {
+	off := findSfxOffsetPE(f)
+	if off != 0 {
 		t.Error("findSfxOffsetPE() expected notSfx for non-PE file")
 	}
 }

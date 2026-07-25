@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"debug/pe"
-	"fmt"
+	"errors"
 	"io"
+	"maps"
 	"os"
 	"strings"
+	_ "unsafe"
 
 	"github.com/mholt/archives"
 )
@@ -22,11 +24,12 @@ var (
 	zipMagic      = []byte{0x50, 0x4b, 0x03, 0x04}
 )
 
-func init() {
-	archives.RegisterFormat(sevenZipSFX{})
-}
+//go:linkname formats github.com/mholt/archives.formats
+var formats map[string]archives.Format
 
-type sevenZipSFX struct{}
+func init() {
+	archives.RegisterFormat(SFX(maps.Clone(formats)))
+}
 
 type sfxSeekReaderAt interface {
 	io.Reader
@@ -34,85 +37,111 @@ type sfxSeekReaderAt interface {
 	io.Seeker
 }
 
-func (sevenZipSFX) Extension() string {
+type SFX map[string]archives.Format
+
+func (SFX) Extension() string {
 	return ".exe"
 }
 
-func (sevenZipSFX) MediaType() string { return "application/x-msdownload" }
+func (SFX) MediaType() string { return "application/x-msdownload" }
 
-func (sevenZipSFX) Match(_ context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {
+func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {
 	var mr archives.MatchResult
 
-	if !strings.HasSuffix(strings.ToLower(filename), ".exe") {
+	if filename != "" && !strings.HasSuffix(strings.ToLower(filename), ".exe") {
 		return mr, nil
 	}
-
-	data, err := readAtMostLocal(stream, searchLimit)
+	// stream is archives.rewindReader, which is not seekable. therefore we need the bytes.Reader method.
+	// however, this have a limitation that if SFX PE section is larger than searchLimit, we won't be able to detect the compressed data.
+	data := make([]byte, searchLimit)
+	n, err := stream.Read(data)
 	if err != nil {
 		return mr, err
 	}
-
-	offset, ty := findSfxOffsetInData(data)
-	if ty == notSfx || offset == 0 {
+	rd := bytes.NewReader(data[:n])
+	off, name := s.findSfxOffsetReaderAt(ctx, rd)
+	if off == 0 || name == "" {
 		return mr, nil
 	}
-
+	mr.ByName = filename != ""
 	mr.ByStream = true
-	mr.ByName = true
 	return mr, nil
 }
 
-func (sfx sevenZipSFX) Extract(ctx context.Context, archive io.Reader, handleFile archives.FileHandler) error {
+func resetAndSection(stream sfxSeekReaderAt, offset int64) *io.SectionReader {
+	size, err := stream.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil
+	}
+	if _, err := stream.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+	return io.NewSectionReader(stream, offset, size-offset)
+}
+
+func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int64, string) {
+	off := findSfxOffsetPE(r)
+	if off == 0 {
+		// bytes search fallback
+		return findSfxOffsetReaderAt(r)
+	}
+	for name, ty := range s {
+		section := resetAndSection(r, off)
+		if section == nil {
+			continue
+		}
+		mr, err := ty.Match(ctx, "", section)
+		if err != nil {
+			continue
+		}
+		if mr.ByStream {
+			return off, name
+		}
+	}
+	return 0, ""
+}
+
+var errReaderAt = errors.New("input type must support io.ReadAt and io.Seeker for SFX extraction")
+
+func (sfx SFX) Extract(ctx context.Context, archive io.Reader, handleFile archives.FileHandler) error {
 	file, ok := archive.(sfxSeekReaderAt)
 	if !ok {
-		return fmt.Errorf("input type must support io.ReaderAt and io.Seeker for 7z SFX extraction")
+		return errReaderAt
 	}
 
-	size, err := streamSize(file)
-	if err != nil {
-		return fmt.Errorf("determine source archive size: %w", err)
-	}
-
-	offset, ty := findSfxOffsetReaderAt(file)
-	if ty == notSfx || offset == 0 {
+	off, name := sfx.findSfxOffsetReaderAt(ctx, file)
+	if off == 0 {
 		return archives.NoMatch
 	}
-
-	payload := io.NewSectionReader(file, offset, size-offset)
-	switch ty {
-	case sevenZipSfx:
-		return archives.SevenZip{}.Extract(ctx, payload, handleFile)
-	case zipSfx:
-		return archives.Zip{}.Extract(ctx, payload, handleFile)
-	default:
-		return fmt.Errorf("not valid sfxType %d", ty)
+	arc, ok := sfx[name].(archives.Extractor)
+	if !ok {
+		return archives.NoMatch
 	}
+	sec := resetAndSection(file, off)
+	if sec == nil {
+		return errReaderAt
+	}
+	return arc.Extract(ctx, sec, handleFile)
 }
 
 // findSfxOffset locates the embedded archive payload in an SFX file. It
 // prefers debug/pe parsing of the PE section table for an accurate offset,
 // falling back to brute-force signature scanning when the file is not a valid
 // PE or the section table doesn't point to a known archive signature.
-func findSfxOffset(f *os.File) (int64, sfxType) {
+func findSfxOffset(f *os.File) (int64, string) {
 	return findSfxOffsetReaderAt(f)
 }
 
-type sfxType int
-
 const (
-	notSfx sfxType = iota
-	sevenZipSfx
-	zipSfx
+	notSfx      = ""
+	sevenZipSfx = "7z"
+	zipSfx      = "zip"
 )
 
 // findSfxOffsetReaderAt locates the embedded archive payload in an SFX file.
 // It first tries debug/pe to parse the PE header for an accurate offset, then
 // falls back to brute-force signature scanning for non-PE or malformed files.
-func findSfxOffsetReaderAt(r io.ReaderAt) (int64, sfxType) {
-	if offset, ty := findSfxOffsetPE(r); ty != notSfx {
-		return offset, ty
-	}
-
+func findSfxOffsetReaderAt(r io.ReaderAt) (int64, string) {
 	data := make([]byte, searchLimit)
 	n, err := r.ReadAt(data, 0)
 	if err != nil && err != io.EOF {
@@ -124,12 +153,11 @@ func findSfxOffsetReaderAt(r io.ReaderAt) (int64, sfxType) {
 // findSfxOffsetPE uses debug/pe to parse the PE header and locate the embedded
 // archive payload. SFX archives append their compressed data after the last PE
 // section's raw data, so the payload offset equals the end of the last section.
-// Returns notSfx if the file is not a valid PE or no known archive signature is
-// found at the computed offset.
-func findSfxOffsetPE(r io.ReaderAt) (int64, sfxType) {
+// Returns 0 if the file is not a valid PE
+func findSfxOffsetPE(r io.ReaderAt) int64 {
 	peFile, err := pe.NewFile(r)
 	if err != nil {
-		return 0, notSfx
+		return 0
 	}
 	defer peFile.Close()
 
@@ -142,30 +170,10 @@ func findSfxOffsetPE(r io.ReaderAt) (int64, sfxType) {
 		}
 	}
 
-	if maxEnd == 0 {
-		return 0, notSfx
-	}
-
-	// Read enough bytes to check both 7z and zip magic signatures.
-	buf := make([]byte, len(sevenZipMagic))
-	n, _ := r.ReadAt(buf, maxEnd)
-	buf = buf[:n]
-
-	if bytes.Equal(buf, sevenZipMagic) {
-		return maxEnd, sevenZipSfx
-	}
-
-	// Check for zip magic (4 bytes) with non-zero version byte (byte 4).
-	if len(buf) >= len(zipMagic)+1 &&
-		bytes.Equal(buf[:len(zipMagic)], zipMagic) &&
-		buf[len(zipMagic)] != 0 {
-		return maxEnd, zipSfx
-	}
-
-	return 0, notSfx
+	return maxEnd
 }
 
-func findSfxOffsetInData(data []byte) (int64, sfxType) {
+func findSfxOffsetInData(data []byte) (int64, string) {
 	offset, ok := findSfxOffsetInDataWithMagic(data, sevenZipMagic)
 	if ok {
 		return offset, sevenZipSfx
@@ -198,36 +206,4 @@ func findSfxOffsetInDataWithZipVersion(data []byte) (int64, bool) {
 		return int64(i), true
 	}
 	return 0, false
-}
-
-func streamSize(stream io.Seeker) (int64, error) {
-	current, err := stream.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0, err
-	}
-
-	size, err := stream.Seek(0, io.SeekEnd)
-	if err != nil {
-		return 0, err
-	}
-
-	if _, err := stream.Seek(current, io.SeekStart); err != nil {
-		return 0, err
-	}
-
-	return size, nil
-}
-
-func readAtMostLocal(stream io.Reader, limit int) ([]byte, error) {
-	if stream == nil || limit <= 0 {
-		return []byte{}, nil
-	}
-
-	buf := make([]byte, limit)
-	n, err := io.ReadFull(stream, buf)
-	if err == nil || err == io.EOF || err == io.ErrUnexpectedEOF {
-		return buf[:n], nil
-	}
-
-	return nil, err
 }
