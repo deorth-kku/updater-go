@@ -3,6 +3,7 @@ package extractor
 import (
 	"bytes"
 	"context"
+	"debug/pe"
 	"fmt"
 	"io"
 	"os"
@@ -88,9 +89,10 @@ func (sfx sevenZipSFX) Extract(ctx context.Context, archive io.Reader, handleFil
 	}
 }
 
-// findSfxOffset scans the beginning of f for the 7z signature. Self-extracting
-// (SFX) archives embed a 7z payload after an executable stub, so the signature
-// is not at offset 0. Returns the offset of the signature and true if found.
+// findSfxOffset locates the embedded archive payload in an SFX file. It
+// prefers debug/pe parsing of the PE section table for an accurate offset,
+// falling back to brute-force signature scanning when the file is not a valid
+// PE or the section table doesn't point to a known archive signature.
 func findSfxOffset(f *os.File) (int64, sfxType) {
 	return findSfxOffsetReaderAt(f)
 }
@@ -103,13 +105,64 @@ const (
 	zipSfx
 )
 
+// findSfxOffsetReaderAt locates the embedded archive payload in an SFX file.
+// It first tries debug/pe to parse the PE header for an accurate offset, then
+// falls back to brute-force signature scanning for non-PE or malformed files.
 func findSfxOffsetReaderAt(r io.ReaderAt) (int64, sfxType) {
+	if offset, ty := findSfxOffsetPE(r); ty != notSfx {
+		return offset, ty
+	}
+
 	data := make([]byte, searchLimit)
 	n, err := r.ReadAt(data, 0)
 	if err != nil && err != io.EOF {
 		return 0, notSfx
 	}
 	return findSfxOffsetInData(data[:n])
+}
+
+// findSfxOffsetPE uses debug/pe to parse the PE header and locate the embedded
+// archive payload. SFX archives append their compressed data after the last PE
+// section's raw data, so the payload offset equals the end of the last section.
+// Returns notSfx if the file is not a valid PE or no known archive signature is
+// found at the computed offset.
+func findSfxOffsetPE(r io.ReaderAt) (int64, sfxType) {
+	peFile, err := pe.NewFile(r)
+	if err != nil {
+		return 0, notSfx
+	}
+	defer peFile.Close()
+
+	// Find the end of the last PE section's raw data.
+	var maxEnd int64
+	for _, sec := range peFile.Sections {
+		end := int64(sec.Offset) + int64(sec.Size)
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+
+	if maxEnd == 0 {
+		return 0, notSfx
+	}
+
+	// Read enough bytes to check both 7z and zip magic signatures.
+	buf := make([]byte, len(sevenZipMagic))
+	n, _ := r.ReadAt(buf, maxEnd)
+	buf = buf[:n]
+
+	if bytes.Equal(buf, sevenZipMagic) {
+		return maxEnd, sevenZipSfx
+	}
+
+	// Check for zip magic (4 bytes) with non-zero version byte (byte 4).
+	if len(buf) >= len(zipMagic)+1 &&
+		bytes.Equal(buf[:len(zipMagic)], zipMagic) &&
+		buf[len(zipMagic)] != 0 {
+		return maxEnd, zipSfx
+	}
+
+	return 0, notSfx
 }
 
 func findSfxOffsetInData(data []byte) (int64, sfxType) {
