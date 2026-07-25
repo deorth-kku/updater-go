@@ -1,11 +1,13 @@
 package extractor
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // safePath checks if target is safely within dest (prevents path traversal).
@@ -131,4 +133,70 @@ func (p mergeSkipper) shouldSkipFile(name string) bool {
 		}
 	}
 	return false
+}
+
+// CachedReaderAt wraps an io.Reader into an io.ReaderAt.
+type CachedReaderAt struct {
+	r   io.Reader
+	mu  sync.Mutex
+	buf []byte
+	err error // stores the final error returned by the underlying io.Reader (e.g. io.EOF)
+}
+
+// NewCachedReaderAt creates a new cached reader.
+func NewCachedReaderAt(r io.Reader) *CachedReaderAt {
+	return &CachedReaderAt{
+		r:   r,
+		buf: make([]byte, 0),
+	}
+}
+func (c *CachedReaderAt) expandTo(end int64) {
+	// If the requested offset extends beyond the current cached data and the underlying Reader has not finished,
+	// continue reading to fill the cache.
+	for int64(len(c.buf)) < end && c.err == nil {
+		need := end - int64(len(c.buf))
+		chunk := make([]byte, need)
+
+		nr, rerr := c.r.Read(chunk)
+		if nr > 0 {
+			c.buf = append(c.buf, chunk[:nr]...)
+		}
+		if rerr != nil || nr == 0 {
+			c.err = rerr
+			break
+		}
+	}
+}
+
+// ReadAt implements the io.ReaderAt interface.
+func (c *CachedReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off < 0 {
+		return 0, errors.New("CachedReaderAt.ReadAt: negative offset")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	end := off + int64(len(p))
+	c.expandTo(end)
+
+	// At this point, the underlying data can no longer provide more bytes.
+	if off >= int64(len(c.buf)) {
+		if c.err != nil {
+			return 0, c.err
+		}
+		return 0, io.EOF
+	}
+
+	// Copy data from the cache slice into the target slice p.
+	n = copy(p, c.buf[off:])
+	if n < len(p) {
+		if c.err != nil {
+			err = c.err
+		} else {
+			err = io.EOF
+		}
+	}
+
+	return n, err
 }

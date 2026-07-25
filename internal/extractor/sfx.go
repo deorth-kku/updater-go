@@ -51,24 +51,32 @@ func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (arch
 	if filename != "" && !strings.HasSuffix(strings.ToLower(filename), ".exe") {
 		return mr, nil
 	}
-	// stream is archives.rewindReader, which is not seekable. therefore we need the bytes.Reader method.
-	// however, this have a limitation that if SFX PE section is larger than searchLimit, we won't be able to detect the compressed data.
-	data := make([]byte, searchLimit)
-	n, err := stream.Read(data)
-	if err != nil {
-		return mr, err
+
+	rdat := NewCachedReaderAt(stream)
+	off := findSfxOffsetPE(rdat)
+	var name string
+	if off == 0 {
+		rdat.expandTo(searchLimit)
+		off, name = findSfxOffsetInData(rdat.buf)
+	} else {
+		rdat.expandTo(off + 4096)
+		if len(rdat.buf) > int(off) {
+			name = s.findname(ctx, func() io.Reader {
+				return bytes.NewReader(rdat.buf[off:])
+			})
+		}
 	}
-	rd := bytes.NewReader(data[:n])
-	off, name := s.findSfxOffsetReaderAt(ctx, rd)
-	if off == 0 || name == "" {
+
+	if name == "" || off == 0 {
 		return mr, nil
 	}
+
 	mr.ByName = filename != ""
 	mr.ByStream = true
 	return mr, nil
 }
 
-func resetAndSection(stream sfxSeekReaderAt, offset int64) *io.SectionReader {
+func resetAndSection(stream sfxSeekReaderAt, offset int64) io.Reader {
 	size, err := stream.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil
@@ -76,7 +84,27 @@ func resetAndSection(stream sfxSeekReaderAt, offset int64) *io.SectionReader {
 	if _, err := stream.Seek(0, io.SeekStart); err != nil {
 		return nil
 	}
+	if offset >= size {
+		return nil
+	}
 	return io.NewSectionReader(stream, offset, size-offset)
+}
+
+func (s SFX) findname(ctx context.Context, streamf func() io.Reader) string {
+	for name, ty := range s {
+		stream := streamf()
+		if stream == nil {
+			break
+		}
+		mr, err := ty.Match(ctx, "", stream)
+		if err != nil {
+			continue
+		}
+		if mr.ByStream {
+			return name
+		}
+	}
+	return ""
 }
 
 func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int64, string) {
@@ -85,20 +113,9 @@ func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int6
 		// bytes search fallback
 		return findSfxOffsetReaderAt(r)
 	}
-	for name, ty := range s {
-		section := resetAndSection(r, off)
-		if section == nil {
-			continue
-		}
-		mr, err := ty.Match(ctx, "", section)
-		if err != nil {
-			continue
-		}
-		if mr.ByStream {
-			return off, name
-		}
-	}
-	return 0, ""
+	return off, s.findname(ctx, func() io.Reader {
+		return resetAndSection(r, off)
+	})
 }
 
 var errReaderAt = errors.New("input type must support io.ReadAt and io.Seeker for SFX extraction")
@@ -196,7 +213,7 @@ func findSfxOffsetInDataWithMagic(data []byte, magic []byte) (int64, bool) {
 
 func findSfxOffsetInDataWithZipVersion(data []byte) (int64, bool) {
 	magic := zipMagic
-	for i := range len(data) - len(magic) + 2 {
+	for i := range len(data) - len(magic) {
 		if !bytes.Equal(magic, data[i:i+len(magic)]) {
 			continue
 		}
