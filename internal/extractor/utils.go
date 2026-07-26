@@ -150,6 +150,7 @@ func NewCachedReaderAt(r io.Reader) *CachedReaderAt {
 		buf: make([]byte, 0),
 	}
 }
+
 func (c *CachedReaderAt) expandTo(end int64) {
 	// If the requested offset extends beyond the current cached data and the underlying Reader has not finished,
 	// continue reading to fill the cache.
@@ -199,4 +200,83 @@ func (c *CachedReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	return n, err
+}
+
+func asReaderAt(rd io.Reader) io.ReaderAt {
+	if rdat, ok := rd.(sfxSeekReaderAt); ok {
+		return rdat
+	}
+	return NewCachedReaderAt(rd)
+}
+
+func readAt(rd io.ReaderAt, off int64, leng int64) ([]byte, error) {
+	if cac, ok := rd.(*CachedReaderAt); ok {
+		end := off + leng
+		cac.expandTo(end)
+		if end >= int64(len(cac.buf)) {
+			if off >= int64(len(cac.buf)) {
+				return nil, io.EOF
+			}
+			return cac.buf[off:], cac.err
+		}
+		return cac.buf[off:end], cac.err
+	}
+	data := make([]byte, leng)
+	n, err := rd.ReadAt(data, off)
+	return data[:n], err
+}
+
+func continueAt(rd io.ReaderAt, off int64) io.Reader {
+	switch rd := rd.(type) {
+	case *CachedReaderAt:
+		rd.expandTo(off)
+		if int64(len(rd.buf)) <= off {
+			return rd.r
+		}
+		rd.buf = rd.buf[off:]
+		return &continueReader{rd.buf, rd.r}
+	case sfxSeekReaderAt:
+		return resetAndSection(rd, off)
+	default:
+		panic("not suppose to be here")
+	}
+}
+
+func resetAndSection(stream sfxSeekReaderAt, offset int64) io.Reader {
+	size := int64(-1)
+	switch fd := stream.(type) {
+	case interface{ Size() int64 }:
+		size = fd.Size()
+	case interface{ Stat() (os.FileInfo, error) }:
+		stat, err := fd.Stat()
+		if err == nil {
+			size = stat.Size()
+		}
+	}
+	if size < 0 {
+		size0, err := stream.Seek(0, io.SeekEnd)
+		if err != nil {
+			stream.Seek(offset, io.SeekStart)
+			return stream
+		}
+		size = size0
+	}
+	return io.NewSectionReader(stream, offset, size-offset)
+}
+
+type continueReader struct {
+	data []byte
+	rd   io.Reader
+}
+
+func (cr *continueReader) Read(data []byte) (int, error) {
+	if len(cr.data) > 0 {
+		n := copy(data, cr.data)
+		cr.data = cr.data[n:]
+		if len(cr.data) == 0 {
+			cr.data = nil
+		}
+		return n, nil
+	}
+	return cr.rd.Read(data)
 }

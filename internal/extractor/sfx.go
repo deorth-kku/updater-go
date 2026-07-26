@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"debug/pe"
-	"errors"
 	"io"
 	"maps"
 	"strings"
@@ -49,22 +48,28 @@ func (SFX) Extension() string {
 func (SFX) MediaType() string { return "application/x-msdownload" }
 
 func (s SFX) match(ctx context.Context, stream io.Reader) (int64, string) {
-	rdat := NewCachedReaderAt(stream)
+	_, off, name := s.matchcontinue(ctx, stream)
+	return off, name
+}
+
+func (s SFX) matchcontinue(ctx context.Context, stream io.Reader) (io.Reader, int64, string) {
+	rdat := asReaderAt(stream)
 	off := findSfxOffsetPE(rdat)
 	var name string
 	if off == 0 {
-		rdat.expandTo(searchLimit)
-		off, name = findSfxOffsetInData(rdat.buf)
+		data, _ := readAt(rdat, 0, searchLimit)
+		off, name = findSfxOffsetInData(data)
 	} else {
-		rdat.expandTo(off + peakHeader)
-		off += installOffset(rdat.buf[off:])
-		if len(rdat.buf) > int(off) {
+		data, _ := readAt(rdat, off, peakHeader)
+		install_off := installOffset(data)
+		off += install_off
+		if int64(len(data)) > install_off {
 			name = s.findname(ctx, func() io.Reader {
-				return bytes.NewReader(rdat.buf[off:])
+				return bytes.NewReader(data[install_off:])
 			})
 		}
 	}
-	return off, name
+	return continueAt(rdat, off), off, name
 }
 
 const install = ";!@InstallEnd@!\n"
@@ -94,14 +99,6 @@ func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (arch
 	return mr, nil
 }
 
-func seekReader(stream sfxSeekReaderAt, offset int64) io.Reader {
-	_, err := stream.Seek(offset, io.SeekStart)
-	if err != nil {
-		return nil
-	}
-	return stream
-}
-
 func (s SFX) findname(ctx context.Context, streamf func() io.Reader) string {
 	for name, ty := range s {
 		stream := streamf()
@@ -119,31 +116,8 @@ func (s SFX) findname(ctx context.Context, streamf func() io.Reader) string {
 	return ""
 }
 
-func (s SFX) findSfxOffsetReaderAt(ctx context.Context, r sfxSeekReaderAt) (int64, string) {
-	off := findSfxOffsetPE(r)
-	if off == 0 {
-		// bytes search fallback
-		return findSfxOffsetBytesSearch(r)
-	}
-	data := make([]byte, peakHeader)
-	n, err := r.ReadAt(data, off)
-	if err == nil || errors.Is(err, io.EOF) {
-		off += installOffset(data[:n])
-	}
-	return off, s.findname(ctx, func() io.Reader {
-		return seekReader(r, off)
-	})
-}
-
-var errReaderAt = errors.New("input type must support io.ReadAt and io.Seeker for SFX extraction")
-
 func (sfx SFX) Extract(ctx context.Context, archive io.Reader, handleFile archives.FileHandler) error {
-	file, ok := archive.(sfxSeekReaderAt)
-	if !ok {
-		return errReaderAt
-	}
-
-	off, name := sfx.findSfxOffsetReaderAt(ctx, file)
+	cont, off, name := sfx.matchcontinue(ctx, archive)
 	if off == 0 {
 		return archives.NoMatch
 	}
@@ -151,11 +125,7 @@ func (sfx SFX) Extract(ctx context.Context, archive io.Reader, handleFile archiv
 	if !ok {
 		return archives.NoMatch
 	}
-	sec := seekReader(file, off)
-	if sec == nil {
-		return errReaderAt
-	}
-	return arc.Extract(ctx, sec, handleFile)
+	return arc.Extract(ctx, cont, handleFile)
 }
 
 const (
@@ -163,18 +133,6 @@ const (
 	sevenZipSfx = "7z"
 	zipSfx      = "zip"
 )
-
-// findSfxOffsetBytesSearch locates the embedded archive payload in an SFX file.
-// It first tries debug/pe to parse the PE header for an accurate offset, then
-// falls back to brute-force signature scanning for non-PE or malformed files.
-func findSfxOffsetBytesSearch(r io.ReaderAt) (int64, string) {
-	data := make([]byte, searchLimit)
-	n, err := r.ReadAt(data, 0)
-	if err != nil && err != io.EOF {
-		return 0, notSfx
-	}
-	return findSfxOffsetInData(data[:n])
-}
 
 // findSfxOffsetPE uses debug/pe to parse the PE header and locate the embedded
 // archive payload. SFX archives append their compressed data after the last PE

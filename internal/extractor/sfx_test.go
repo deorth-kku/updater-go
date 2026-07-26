@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -297,6 +298,30 @@ func TestExtractFile_Sfx7zWithInstall(t *testing.T) {
 	verifyExtracted(t, destDir, map[string]string{
 		"setup-git-sdk.bat": batfile,
 	})
+}
+
+type readerOnly struct {
+	io.Reader
+}
+
+// TestExtractDirect_SfxZipWithInstall tests sfxMatcher.Extract() directly
+// without going through the Decompressor layer.
+func TestExtractDirect_SfxZipWithInstall(t *testing.T) {
+	checkFile(t, testZipSfx)
+	destDir := t.TempDir()
+
+	f, err := os.Open(testZipSfx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	handler := makeHandler(destDir, nil, slog.Default())
+	err = sfxMatcher.Extract(t.Context(), readerOnly{f}, handler)
+	if err == nil || err.Error() != "input type must be an io.ReaderAt and io.Seeker because of zip format constraints" {
+		t.Error("unexpected error :", err)
+	}
+
 }
 
 func TestFindSfxOffset_Zip(t *testing.T) {
