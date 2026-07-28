@@ -187,7 +187,7 @@ func TestRemoteAria2Download_PathMapping(t *testing.T) {
 				localDir:  tt.localDir,
 			}
 			stat := &aria2rpc.Status{
-				Files: []aria2rpc.FileInfo{
+				Files: []aria2rpc.File{
 					{Path: tt.aria2Path},
 				},
 			}

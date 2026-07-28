@@ -16,6 +16,7 @@ import (
 	"time"
 
 	aria2 "github.com/deorth-kku/aria2rpc-go"
+	"github.com/deorth-kku/aria2rpc-go/options"
 	"github.com/filecoin-project/go-jsonrpc"
 )
 
@@ -160,17 +161,18 @@ func NewAria2Downloader(ctx context.Context, addr, secret, remoteDir, localDir, 
 // updater-rpc's global aria2 args plus the per-project headers (gap #5).
 func (d *Aria2Downloader) buildAria2Options(aria2Dir, filename string, headers map[string]string) map[string]string {
 	opts := map[string]string{
-		"dir":                       aria2Dir,
-		"out":                       filename,
-		"split":                     "16",
-		"max-connection-per-server": "16",
-		"continue":                  "true",
+		options.Dir:                    aria2Dir,
+		options.Out:                    filename,
+		options.Split:                  "16",
+		options.MaxConnectionPerServer: "16",
+		options.Continue:               "true",
 	}
 	if d.proxy != "" {
-		opts["proxy"] = d.proxy
+		opts[options.AllProxy] = d.proxy
 	}
 	if d.retry > 0 {
-		opts["retry"] = strconv.Itoa(d.retry)
+		opts[options.MaxTries] = strconv.Itoa(d.retry)
+		opts[options.RetryWait] = "1"
 	}
 	if len(headers) > 0 {
 		var headerList []string
@@ -179,7 +181,7 @@ func (d *Aria2Downloader) buildAria2Options(aria2Dir, filename string, headers m
 		}
 		// aria2's "header" option is a multi-valued option expressed as a
 		// newline-separated string in the options map.
-		opts["header"] = strings.Join(headerList, "\n")
+		opts[options.Header] = strings.Join(headerList, "\n")
 	}
 	return opts
 }

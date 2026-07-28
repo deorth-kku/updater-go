@@ -21,7 +21,7 @@ require (
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/sevenzip v1.6.4 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
-	github.com/deorth-kku/go-common v0.0.0-20260701073802-086b455fdbb0 // indirect
+	github.com/deorth-kku/go-common v0.0.0-20260702020726-6fc9468bd8eb // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

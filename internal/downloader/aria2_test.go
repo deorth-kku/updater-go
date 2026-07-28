@@ -56,7 +56,7 @@ func TestResolveLocalPath(t *testing.T) {
 		localDir:  conf.LocalDir,
 	}
 	fmt.Println(rpc.resolveLocalPath(&aria2rpc.Status{
-		Files: []aria2rpc.FileInfo{
+		Files: []aria2rpc.File{
 			{
 				Path: "/mnt/updater-download/proj/file.zip",
 			},
