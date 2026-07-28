@@ -121,7 +121,7 @@ func TestProjectConfig_Unmarshal_AllSubdirs(t *testing.T) {
 func TestProjectConfig_GetProjectConfig(t *testing.T) {
 	// Minimal config — only basic.api_type set
 	data := []byte(`{"basic": {"api_type": "github", "account_name": "test", "project_name": "test"}}`)
-	pc, err := GetProjectConfig(data, nil)
+	pc, err := GetProjectConfig(data)
 	if err != nil {
 		t.Fatalf("GetProjectConfig: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestProjectConfig_GetProjectConfig_WithDefaults(t *testing.T) {
 	data := []byte(`{"basic": {"api_type": "github", "account_name": "test", "project_name": "test"}}`)
 	defaults := json.RawMessage(`{"download": {"try_redirect": false}, "process": {"restart_wait": 5}}`)
 
-	pc, err := GetProjectConfig(data, defaults)
+	pc, err := GetProjectConfig(defaults, data)
 	if err != nil {
 		t.Fatalf("GetProjectConfig: %v", err)
 	}

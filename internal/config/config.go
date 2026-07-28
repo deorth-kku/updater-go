@@ -127,10 +127,11 @@ type MetadataRepo struct {
 
 // ProjectEntry describes one project in the main config.
 type ProjectEntry struct {
-	Name     string `json:"name,omitzero"`
-	SavePath string `json:"path,omitzero"`
-	Version  string `json:"currentVersion,omitzero"`
-	Hold     bool   `json:"hold,omitzero"`
+	Name     string          `json:"name,omitzero"`
+	SavePath string          `json:"path,omitzero"`
+	Version  string          `json:"currentVersion,omitzero"`
+	Override json.RawMessage `json:"override,omitzero"`
+	Hold     bool            `json:"hold,omitzero"`
 }
 
 func (p ProjectEntry) Enabled() bool {
@@ -223,22 +224,15 @@ func ProjectConfigPath(root, name string) string {
 //
 // pcFileBytes is the raw JSON bytes from the project config file.
 // defaults is the "defaults" field from the main config.json (may be nil).
-func GetProjectConfig(pcFileBytes, defaults json.RawMessage) (*ProjectConfig, error) {
+func GetProjectConfig(layers ...json.RawMessage) (*ProjectConfig, error) {
 	// 1. Start with hardcoded defaults
 	base := hardcodedDefaults()
 
-	// 2. Overlay Config.Defaults (project-level defaults from main config)
-	if len(defaults) > 0 {
-		if err := json.Unmarshal(defaults, &base); err != nil {
-			return nil, fmt.Errorf("unmarshal defaults: %w", err)
+	for i, v := range layers {
+		if err := json.Unmarshal(v, &base); err != nil {
+			return nil, fmt.Errorf("unmarshal layer %d: %w", i, err)
 		}
 	}
 
-	// 3. Overlay the actual project config file on top
-	if len(pcFileBytes) > 0 {
-		if err := json.Unmarshal(pcFileBytes, &base); err != nil {
-			return nil, fmt.Errorf("unmarshal project config: %w", err)
-		}
-	}
 	return &base, nil
 }

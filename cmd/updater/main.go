@@ -137,7 +137,7 @@ func run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("read project config %s: %w", flagTest, err)
 		}
-		pc, err := config.GetProjectConfig(data, nil)
+		pc, err := config.GetProjectConfig(data)
 		if err != nil {
 			return fmt.Errorf("parse project config %s: %w", flagTest, err)
 		}
@@ -301,7 +301,7 @@ func run(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		projCfg, err := loadProjectConfig(filepath.Dir(configPath), proj.Name, cfg.Defaults)
+		projCfg, err := loadProjectConfig(filepath.Dir(configPath), proj, cfg.Defaults)
 		if err != nil {
 			logger.Error("load project config", "name", proj.Name, "error", err)
 			continue
@@ -475,11 +475,11 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-func loadProjectConfig(configRoot, name string, defaults json.RawMessage) (*config.ProjectConfig, error) {
-	localPath := config.ProjectConfigPath(configRoot, name)
+func loadProjectConfig(configRoot string, proj config.ProjectEntry, defaults json.RawMessage) (*config.ProjectConfig, error) {
+	localPath := config.ProjectConfigPath(configRoot, proj.Name)
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("read project config %s: %w", localPath, err)
 	}
-	return config.GetProjectConfig(data, defaults)
+	return config.GetProjectConfig(defaults, proj.Override, data)
 }

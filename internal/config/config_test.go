@@ -221,7 +221,7 @@ func TestLoad_RealConfig_GetProjectConfig(t *testing.T) {
 					t.Fatalf("read %s: %v", entry.Name(), err)
 				}
 
-				pc, err := GetProjectConfig(data, nil)
+				pc, err := GetProjectConfig(data)
 				if err != nil {
 					t.Fatalf("GetProjectConfig %s: %v", entry.Name(), err)
 				}
