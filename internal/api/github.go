@@ -34,12 +34,16 @@ func (g *GitHubAPI) SetNoPreRelease(noPull bool) {
 }
 
 // fetchAllReleases fetches the full list of releases from GitHub.
-func (g *GitHubAPI) fetchAllReleases(ctx context.Context) ([]githubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", g.accountName, g.projectName)
+func (g *GitHubAPI) fetchAllReleases(ctx context.Context, page int) ([]githubRelease, error) {
+	if page < 1 {
+		page = 1
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?page=%d", g.accountName, g.projectName, page)
 
 	g.logger.Debug("github query",
 		"account", g.accountName,
 		"project", g.projectName,
+		"page", page,
 		"reason", "fetch all releases list",
 		"result", url,
 	)
@@ -120,7 +124,12 @@ func (g *GitHubAPI) buildReleases(releases []githubRelease) []*Release {
 
 // List returns all releases from GitHub.
 func (g *GitHubAPI) List(ctx context.Context) ([]*Release, error) {
-	releases, err := g.fetchAllReleases(ctx)
+	return g.list(ctx, 1)
+}
+
+// List returns all releases from GitHub.
+func (g *GitHubAPI) list(ctx context.Context, page int) ([]*Release, error) {
+	releases, err := g.fetchAllReleases(ctx, page)
 	if err != nil {
 		return nil, err
 	}
@@ -154,30 +163,34 @@ func (g *GitHubAPI) Latest(ctx context.Context) (*Release, error) {
 
 // LatestByVersion finds a specific release by version string using List.
 func (g *GitHubAPI) LatestByVersion(ctx context.Context, version string) (*Release, error) {
-	list, err := g.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i, rel := range list {
-		g.logger.Debug("github rollback check",
-			"account", g.accountName,
-			"project", g.projectName,
-			"index", i,
-			"computed_version", rel.Version,
-			"target_version", version,
-			"reason", "comparing computed version against target",
-			"result", fmt.Sprintf("match=%v", rel.Version == version),
-		)
-		if rel.Version == version {
-			g.logger.Info("rollback version found",
+	for page := range 100 {
+		list, err := g.list(ctx, page+1)
+		if err != nil {
+			return nil, err
+		}
+		if len(list) == 0 {
+			break
+		}
+		for i, rel := range list {
+			g.logger.Debug("github rollback check",
 				"account", g.accountName,
 				"project", g.projectName,
-				"version", rel.Version,
-				"reason", "target version matched during rollback scan",
-				"result", rel.Version,
+				"index", i,
+				"computed_version", rel.Version,
+				"target_version", version,
+				"reason", "comparing computed version against target",
+				"result", fmt.Sprintf("match=%v", rel.Version == version),
 			)
-			return rel, nil
+			if rel.Version == version {
+				g.logger.Info("rollback version found",
+					"account", g.accountName,
+					"project", g.projectName,
+					"version", rel.Version,
+					"reason", "target version matched during rollback scan",
+					"result", rel.Version,
+				)
+				return rel, nil
+			}
 		}
 	}
 
