@@ -314,7 +314,35 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		}
 	}
 
-	// Step 5: Extract
+	var stopped bool
+	var ctrl *process.Controller
+
+	// Step 5: Process management (stop/start if allow_restart)
+	if u.projectCfg.Process.AllowRestart {
+		imageName := u.projectCfg.Process.ImageName
+		if imageName == "" {
+			imageName = result.ProjectName
+		}
+
+		ctrl = process.NewWithConfig(
+			imageName,
+			u.entry.SavePath,
+			u.projectCfg.Process.StopCmd,
+			u.projectCfg.Process.StartCmd,
+			u.projectCfg.Process.Service,
+			u.projectCfg.Process.RestartWait,
+			u.log(),
+		)
+
+		// Stop process
+		stopped, err = ctrl.Stop(ctx)
+		if err != nil {
+			u.log().Warn("stop failed", "error", err)
+			return result
+		}
+	}
+
+	// Step 6: Extract
 	if !u.projectCfg.Decompress.Skip {
 		u.log().Info("extracting archive",
 			"path", localPath,
@@ -363,41 +391,18 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		)
 	}
 
-	// Step 6: Process management (stop/start if allow_restart)
-	if u.projectCfg.Process.AllowRestart {
-		imageName := u.projectCfg.Process.ImageName
-		if imageName == "" {
-			imageName = result.ProjectName
-		}
-
-		ctrl := process.NewWithConfig(
-			imageName,
-			u.entry.SavePath,
-			u.projectCfg.Process.StopCmd,
-			u.projectCfg.Process.StartCmd,
-			u.projectCfg.Process.Service,
-			u.projectCfg.Process.RestartWait,
-			u.log(),
-		)
-
-		// Stop process
-		stopped, err := ctrl.Stop(ctx)
-		if err != nil {
-			u.log().Warn("stop failed", "error", err)
-			return result
-		}
-		if !stopped {
+	if ctrl != nil {
+		if stopped {
+			// Start process
+			if err := ctrl.Start(ctx); err != nil {
+				u.log().Warn("start failed", "error", err)
+			}
+		} else {
 			u.log().Info("no process running, skip start",
-				"image", imageName,
+				"image", ctrl.Name(),
 				"reason", "stop found nothing to stop",
 				"result", "skip start",
 			)
-			return result
-		}
-
-		// Start process
-		if err := ctrl.Start(ctx); err != nil {
-			u.log().Warn("start failed", "error", err)
 		}
 	}
 

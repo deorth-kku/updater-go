@@ -325,3 +325,7 @@ func (c *Controller) IsRunning() bool {
 	}
 	return len(procs) > 0
 }
+
+func (c *Controller) Name() string {
+	return c.imageName
+}
