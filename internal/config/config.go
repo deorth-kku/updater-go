@@ -229,6 +229,9 @@ func GetProjectConfig(layers ...json.RawMessage) (*ProjectConfig, error) {
 	base := hardcodedDefaults()
 
 	for i, v := range layers {
+		if len(v) == 0 {
+			continue
+		}
 		if err := json.Unmarshal(v, &base); err != nil {
 			return nil, fmt.Errorf("unmarshal layer %d: %w", i, err)
 		}
