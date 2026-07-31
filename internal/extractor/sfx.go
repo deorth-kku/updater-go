@@ -72,14 +72,37 @@ func (s SFX) matchcontinue(ctx context.Context, stream io.Reader) (io.Reader, in
 	return continueAt(rdat, off), off, name
 }
 
-const install = ";!@InstallEnd@!\n"
+const install = ";!@InstallEnd@!"
 
 func installOffset(data []byte) int64 {
 	install_offset, found := findSfxOffsetInDataWithMagic(data, []byte(install))
 	if !found {
 		return 0
 	}
-	return install_offset + int64(len(install))
+	return findNextNonSpaceASCII(data, install_offset+int64(len(install)))
+}
+
+func isASCIIWhitespace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '\v', '\f':
+		return true
+	default:
+		return false
+	}
+}
+
+func findNextNonSpaceASCII(data []byte, offset int64) int64 {
+	if offset < 0 {
+		return offset
+	}
+
+	for i := offset; i < int64(len(data)); i++ {
+		if !isASCIIWhitespace(data[i]) {
+			return i
+		}
+	}
+
+	return offset
 }
 
 func (s SFX) Match(ctx context.Context, filename string, stream io.Reader) (archives.MatchResult, error) {

@@ -170,6 +170,25 @@ func TestIdentify_Sfx7z(t *testing.T) {
 	}
 }
 
+const nvidia_testfile = "/tmp/610.88-desktop-win10-win11-64bit-international-dch-whql.exe"
+
+func TestIdentify_Nvidia(t *testing.T) {
+	checkFile(t, nvidia_testfile)
+	f, err := os.Open(nvidia_testfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	offset, ty := sfxMatcher.match(t.Context(), f)
+	if ty != sevenZipSfx {
+		t.Fatal("findSfxOffset() expected to find trailing 7z signature")
+	}
+	if offset != 1100324 {
+		t.Errorf("findSfxOffset() = %d, want 1100324", offset)
+	}
+}
+
 func TestExtractFile_Sfx7z(t *testing.T) {
 	tmpDir := t.TempDir()
 	archivePath := filepath.Join(tmpDir, "payload.7z")
