@@ -58,11 +58,15 @@ func copyDir(src, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(path)
+			linkTarget, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
-			return os.Symlink(target, dstPath)
+			// Remove a stale entry first so re-extraction of updated packages works.
+			if err := os.RemoveAll(dstPath); err != nil {
+				return err
+			}
+			return os.Symlink(linkTarget, dstPath)
 		}
 		return copyFile(path, dstPath)
 	})

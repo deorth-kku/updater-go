@@ -328,6 +328,72 @@ func TestCopyDir_SymlinkAndRegularFile(t *testing.T) {
 	}
 }
 
+func TestCopyDir_SymlinkDestAlreadyExists(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Source has a regular file and a symlink
+	os.WriteFile(filepath.Join(srcDir, "target.txt"), []byte("target"), 0o644)
+	os.Symlink("target.txt", filepath.Join(srcDir, "link.txt"))
+
+	// Pre-create a symlink at the destination where copyDir will try to create "link.txt"
+	existingLink := filepath.Join(dstDir, "link.txt")
+	os.Symlink("old-target", existingLink)
+
+	// Also pre-create a regular file where copyDir will try to create "target.txt"
+	os.WriteFile(filepath.Join(dstDir, "target.txt"), []byte("old-target"), 0o644)
+
+	if err := copyDir(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDir() error = %v", err)
+	}
+
+	// Verify the symlink was recreated correctly
+	target, err := os.Readlink(existingLink)
+	if err != nil {
+		t.Fatalf("Readlink link.txt: %v", err)
+	}
+	if target != "target.txt" {
+		t.Errorf("link.txt target = %q, want %q", target, "target.txt")
+	}
+
+	// Verify the regular file was overwritten correctly
+	content, err := os.ReadFile(filepath.Join(dstDir, "target.txt"))
+	if err != nil {
+		t.Fatalf("read target.txt: %v", err)
+	}
+	if string(content) != "target" {
+		t.Errorf("target.txt content = %q, want %q", content, "target")
+	}
+}
+
+func TestCopyDir_SymlinkDestAlreadyExists_Error(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	// Source has a symlink
+	os.WriteFile(filepath.Join(srcDir, "target.txt"), []byte("target"), 0o644)
+	os.Symlink("target.txt", filepath.Join(srcDir, "link.txt"))
+
+	// Pre-create a symlink at the destination where copyDir will try to create "link.txt"
+	existingLink := filepath.Join(dstDir, "link.txt")
+	os.Symlink("old-target", existingLink)
+
+	// After fix: copyDir should succeed and overwrite the existing symlink
+	err := copyDir(srcDir, dstDir)
+	if err != nil {
+		t.Fatalf("copyDir() error = %v, want nil", err)
+	}
+
+	// Verify the symlink was correctly recreated
+	target, err := os.Readlink(existingLink)
+	if err != nil {
+		t.Fatalf("Readlink link.txt: %v", err)
+	}
+	if target != "target.txt" {
+		t.Errorf("link.txt target = %q, want %q", target, "target.txt")
+	}
+}
+
 // --- prefixSkipper / mergeSkipper tests ---
 
 type mockSkipper struct {
