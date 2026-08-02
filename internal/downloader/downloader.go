@@ -281,7 +281,7 @@ func (d *Aria2Downloader) waitForWS(ctx context.Context, gid string) (*aria2.Sta
 		case statusError, statusStopped:
 			statusResp, err := d.client.TellStatus(ctx, gid)
 			if err == nil && statusResp != nil {
-				return statusResp, fmt.Errorf("aria2 download %s: %s: %s", status, statusResp.ErrorCode, statusResp.ErrorMessage)
+				return statusResp, fmt.Errorf("aria2 download %s: %d: %s", status, statusResp.ErrorCode, statusResp.ErrorMessage)
 			}
 			return statusResp, err
 		case statusComplete:
@@ -313,7 +313,7 @@ func (d *Aria2Downloader) waitForPoll(ctx context.Context, gid string) (*aria2.S
 			case "complete":
 				return statusResp, nil
 			case "error":
-				return nil, fmt.Errorf("aria2 download error: %s: %s", statusResp.ErrorCode, statusResp.ErrorMessage)
+				return nil, fmt.Errorf("aria2 download error: %d: %s", statusResp.ErrorCode, statusResp.ErrorMessage)
 			case "stopped":
 				return nil, fmt.Errorf("aria2 download stopped: %s", gid)
 			}

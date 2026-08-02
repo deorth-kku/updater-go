@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/deorth-kku/aria2rpc-go"
+	"github.com/deorth-kku/aria2rpc-go/options"
 	"github.com/deorth-kku/updater-go/internal/config"
 )
 
@@ -13,29 +14,32 @@ func TestBuildAria2Options(t *testing.T) {
 	d := &Aria2Downloader{proxy: "http://proxy:8080", retry: 5}
 	opts := d.buildAria2Options("/dl/proj", "file.zip", map[string]string{"Authorization": "Bearer x"})
 
-	if opts["dir"] != "/dl/proj" {
-		t.Errorf("dir = %q, want %q", opts["dir"], "/dl/proj")
+	if opts[options.Dir] != "/dl/proj" {
+		t.Errorf("dir = %q, want %q", opts[options.Dir], "/dl/proj")
 	}
-	if opts["out"] != "file.zip" {
-		t.Errorf("out = %q, want %q", opts["out"], "file.zip")
+	if opts[options.Out] != "file.zip" {
+		t.Errorf("out = %q, want %q", opts[options.Out], "file.zip")
 	}
-	if opts["split"] != "16" {
-		t.Errorf("split = %q, want %q", opts["split"], "16")
+	if opts[options.Split] != "16" {
+		t.Errorf("split = %q, want %q", opts[options.Split], "16")
 	}
-	if opts["max-connection-per-server"] != "16" {
-		t.Errorf("max-connection-per-server = %q, want %q", opts["max-connection-per-server"], "16")
+	if opts[options.MaxConnectionPerServer] != "16" {
+		t.Errorf("max-connection-per-server = %q, want %q", opts[options.MaxConnectionPerServer], "16")
 	}
-	if opts["continue"] != "true" {
-		t.Errorf("continue = %q, want %q", opts["continue"], "true")
+	if opts[options.Continue] != "true" {
+		t.Errorf("continue = %q, want %q", opts[options.Continue], "true")
 	}
-	if opts["proxy"] != "http://proxy:8080" {
-		t.Errorf("proxy = %q, want %q", opts["proxy"], "http://proxy:8080")
+	if opts[options.AllProxy] != "http://proxy:8080" {
+		t.Errorf("all-proxy = %q, want %q", opts[options.AllProxy], "http://proxy:8080")
 	}
-	if opts["retry"] != "5" {
-		t.Errorf("retry = %q, want %q", opts["retry"], "5")
+	if opts[options.MaxTries] != "5" {
+		t.Errorf("max-tries = %q, want %q", opts[options.MaxTries], "5")
 	}
-	if opts["header"] != "Authorization: Bearer x" {
-		t.Errorf("header = %q, want %q", opts["header"], "Authorization: Bearer x")
+	if opts[options.RetryWait] != "1" {
+		t.Errorf("retry-wait = %q, want %q", opts[options.RetryWait], "1")
+	}
+	if opts[options.Header] != "Authorization: Bearer x" {
+		t.Errorf("header = %q, want %q", opts[options.Header], "Authorization: Bearer x")
 	}
 }
 
