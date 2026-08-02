@@ -15,7 +15,7 @@ func (c *Controller) stopService(ctx context.Context) error {
 		return fmt.Errorf("systemd stop: connect: %w", err)
 	}
 	defer conn.Close()
-	_, err = conn.StopUnitContext(ctx, c.imageName, "replace", nil)
+	_, err = conn.StopUnitContext(ctx, c.imageName+".service", "replace", nil)
 	if err != nil {
 		return fmt.Errorf("systemd stop: %s: %w", c.imageName, err)
 	}
@@ -28,7 +28,7 @@ func (c *Controller) startService(ctx context.Context) error {
 		return fmt.Errorf("systemd start: connect: %w", err)
 	}
 	defer conn.Close()
-	_, err = conn.StartUnitContext(ctx, c.imageName, "replace", nil)
+	_, err = conn.StartUnitContext(ctx, c.imageName+".service", "replace", nil)
 	if err != nil {
 		return fmt.Errorf("systemd start: %s: %w", c.imageName, err)
 	}
