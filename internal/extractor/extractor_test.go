@@ -922,3 +922,232 @@ func TestIdentify_NonArchive(t *testing.T) {
 		t.Errorf("Identify() for non-SFX .exe should return NoMatch, got %v", err)
 	}
 }
+
+// --- Helper functions to generate archives with symlinks ---
+
+// writeTarGzSymlink creates a tar.gz archive containing both regular files and
+// symbolic links. files maps archive path -> file content (regular files).
+// links maps archive path -> symlink target.
+func writeTarGzSymlink(t *testing.T, path string, files map[string]string, links map[string]string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(content)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for name, target := range links {
+		if err := tw.WriteHeader(&tar.Header{
+			Name:     name,
+			Mode:     0o777,
+			Linkname: target,
+			Typeflag: tar.TypeSymlink,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --- Symlink extraction tests ---
+
+func TestTarGzExtractor_Symlink(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzSymlink(t, archivePath,
+		map[string]string{
+			"target.txt": "hello world\n",
+		},
+		map[string]string{
+			"link.txt": "target.txt",
+		},
+	)
+
+	destDir := t.TempDir()
+	cfg := defaultDecompressConfig()
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// The regular file should exist with correct content.
+	verifyExtracted(t, destDir, map[string]string{
+		"target.txt": "hello world\n",
+	})
+
+	// The symlink should be a symlink (not a regular file), and reading through
+	// it should resolve to the target file's content.
+	linkPath := filepath.Join(destDir, "link.txt")
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat(link.txt): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link.txt should be a symlink, got regular file")
+	}
+	target, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("Readlink(link.txt): %v", err)
+	}
+	if target != "target.txt" {
+		t.Errorf("link target = %q, want %q", target, "target.txt")
+	}
+
+	// Reading through the symlink should resolve to the target content.
+	content, err := os.ReadFile(linkPath)
+	if err != nil {
+		t.Fatalf("ReadFile(link.txt) through symlink: %v", err)
+	}
+	if string(content) != "hello world\n" {
+		t.Errorf("symlink resolved content = %q, want %q", content, "hello world\n")
+	}
+}
+
+func TestTarGzExtractor_Symlink_SkipFilter(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzSymlink(t, archivePath,
+		map[string]string{
+			"target.txt": "hello world\n",
+		},
+		map[string]string{
+			"link.txt": "target.txt",
+		},
+	)
+
+	destDir := t.TempDir()
+	// Exclude .txt files; the symlink "link.txt" should be skipped.
+	cfg := defaultDecompressConfig(".txt")
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// Both target.txt and link.txt end in .txt and should be skipped.
+	if _, err := os.Lstat(filepath.Join(destDir, "link.txt")); err == nil {
+		t.Error("symlink link.txt should have been skipped by exclude filter")
+	}
+	if _, err := os.Lstat(filepath.Join(destDir, "target.txt")); err == nil {
+		t.Error("target.txt should have been skipped by exclude filter")
+	}
+}
+
+func TestTarGzExtractor_Symlink_Dangling(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzSymlink(t, archivePath,
+		map[string]string{},
+		map[string]string{
+			"dangling": "../nonexistent_target",
+		},
+	)
+
+	destDir := t.TempDir()
+	cfg := defaultDecompressConfig()
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// A symlink to a non-existent target should still be created as a symlink,
+	// not as a regular file containing the target string.
+	info, err := os.Lstat(filepath.Join(destDir, "dangling"))
+	if err != nil {
+		t.Fatalf("Lstat(dangling): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("dangling should be a symlink, got regular file")
+	}
+	target, err := os.Readlink(filepath.Join(destDir, "dangling"))
+	if err != nil {
+		t.Fatalf("Readlink(dangling): %v", err)
+	}
+	if target != "../nonexistent_target" {
+		t.Errorf("symlink target = %q, want %q", target, "../nonexistent_target")
+	}
+}
+
+func TestTarGzExtractor_Symlink_NestedDir(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
+	writeTarGzSymlink(t, archivePath,
+		map[string]string{
+			"app/bin/real": "binary content\n",
+		},
+		map[string]string{
+			"app/bin/link": "real",
+		},
+	)
+
+	destDir := t.TempDir()
+	cfg := defaultDecompressConfig()
+	d, err := New(t.Context(), archivePath, cfg, false, "", slog.Default())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer d.Close()
+	if err := d.Extract(t.Context(), destDir); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	// Regular file extracted correctly.
+	verifyExtracted(t, destDir, map[string]string{
+		"app/bin/real": "binary content\n",
+	})
+
+	// Symlink in a nested directory should be a symlink with correct target.
+	linkPath := filepath.Join(destDir, "app/bin/link")
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat(link): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link should be a symlink, got regular file")
+	}
+	target, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("Readlink(link): %v", err)
+	}
+	if target != "real" {
+		t.Errorf("symlink target = %q, want %q", target, "real")
+	}
+
+	// Reading through the symlink should resolve to the real file content.
+	content, err := os.ReadFile(linkPath)
+	if err != nil {
+		t.Fatalf("ReadFile(link): %v", err)
+	}
+	if string(content) != "binary content\n" {
+		t.Errorf("symlink resolved content = %q, want %q", content, "binary content\n")
+	}
+}

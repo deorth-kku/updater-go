@@ -403,6 +403,20 @@ func makeHandler(destDir string, skip skipper, logger *slog.Logger) archives.Fil
 			return os.MkdirAll(target, 0o755)
 		}
 
+		// Handle symbolic links: create the symlink rather than copying
+		// file content (which would write the link target as file content).
+		if fi.Mode()&os.ModeSymlink != 0 {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			// os.Symlink fails if the destination already exists; remove a
+			// stale entry first so re-extraction of updated packages works.
+			if err := os.RemoveAll(target); err != nil {
+				return err
+			}
+			return os.Symlink(fi.LinkTarget, target)
+		}
+
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
