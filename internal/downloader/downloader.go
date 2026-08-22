@@ -17,7 +17,7 @@ import (
 
 	aria2 "github.com/deorth-kku/aria2rpc-go"
 	"github.com/deorth-kku/aria2rpc-go/options"
-	"github.com/filecoin-project/go-jsonrpc"
+	"github.com/deorth-kku/go-jsonrpc"
 )
 
 // Downloader is the interface for file downloads.
