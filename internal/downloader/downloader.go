@@ -61,8 +61,11 @@ type event = downloadStatus
 // notification racing ahead of subscribe() is never dropped. This can happen
 // for fast or resumed (continue=true) downloads where aria2 emits onDownload*
 // before AddURI returns and waitForWS registers its subscriber.
+//
+// A plain mutex is used: both notify() and subscribe() mutate the dist/buffers
+// maps, so there are no lock-free read paths left to warrant an RWMutex.
 type subscriber struct {
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	dist    map[string]chan event // active subscriber channels, keyed by GID
 	buffers map[string]event      // terminal events buffered before a subscriber
 }
