@@ -56,58 +56,67 @@ const (
 type event = downloadStatus
 
 // subscriber distributes aria2 download events to subscribers by GID.
+//
+// Events that arrive before a subscriber registers for a GID are buffered so a
+// notification racing ahead of subscribe() is never dropped. This can happen
+// for fast or resumed (continue=true) downloads where aria2 emits onDownload*
+// before AddURI returns and waitForWS registers its subscriber.
 type subscriber struct {
-	dist map[string]chan event
-	mu   sync.RWMutex
+	mu      sync.RWMutex
+	dist    map[string]chan event // active subscriber channels, keyed by GID
+	buffers map[string]event      // terminal events buffered before a subscriber
 }
 
 // newSubscriber creates a new subscriber.
 func newSubscriber() *subscriber {
 	return &subscriber{
-		dist: make(map[string]chan event),
+		dist:    make(map[string]chan event),
+		buffers: make(map[string]event),
 	}
+}
+
+// notify delivers a terminal event for gid. When a subscriber is already
+// registered the event is sent on its channel; otherwise it is buffered and
+// delivered when subscribe(gid) runs, so an early notification is not lost.
+func (s *subscriber) notify(gid string, ev event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ch, ok := s.dist[gid]; ok {
+		select {
+		case ch <- ev:
+		default:
+		}
+		return
+	}
+	s.buffers[gid] = ev
 }
 
 // OnDownloadComplete handles aria2 download complete events.
 func (s *subscriber) OnDownloadComplete(ctx context.Context, e aria2.DownloadEvent) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if ch, ok := s.dist[e.GID]; ok {
-		select {
-		case ch <- statusComplete:
-		default:
-		}
-	}
+	s.notify(e.GID, statusComplete)
 }
 
 // OnDownloadError handles aria2 download error events.
 func (s *subscriber) OnDownloadError(ctx context.Context, e aria2.DownloadEvent) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if ch, ok := s.dist[e.GID]; ok {
-		select {
-		case ch <- statusError:
-		default:
-		}
-	}
+	s.notify(e.GID, statusError)
 }
 
 // OnDownloadStop handles aria2 download stop events.
 func (s *subscriber) OnDownloadStop(ctx context.Context, e aria2.DownloadEvent) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if ch, ok := s.dist[e.GID]; ok {
-		select {
-		case ch <- statusStopped:
-		default:
-		}
-	}
+	s.notify(e.GID, statusStopped)
 }
 
-// subscribe returns a channel that receives events for the given GID.
+// subscribe returns a channel that receives events for the given GID. If a
+// terminal event already arrived before this call it is delivered immediately.
 func (s *subscriber) subscribe(gid string) chan event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if ev, ok := s.buffers[gid]; ok {
+		delete(s.buffers, gid)
+		ch := make(chan event, 1)
+		ch <- ev
+		return ch
+	}
 	ch := make(chan event, 1)
 	s.dist[gid] = ch
 	return ch
