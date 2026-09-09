@@ -5,12 +5,24 @@ package process
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/coreos/go-systemd/v22/dbus"
 )
 
+var (
+	isRoot = os.Getuid() == 0
+)
+
+func getConn(ctx context.Context) (*dbus.Conn, error) {
+	if isRoot {
+		return dbus.NewSystemConnectionContext(ctx)
+	}
+	return dbus.NewUserConnectionContext(ctx)
+}
+
 func (c *Controller) stopService(ctx context.Context) error {
-	conn, err := dbus.NewSystemConnectionContext(ctx)
+	conn, err := getConn(ctx)
 	if err != nil {
 		return fmt.Errorf("systemd stop: connect: %w", err)
 	}
@@ -23,7 +35,7 @@ func (c *Controller) stopService(ctx context.Context) error {
 }
 
 func (c *Controller) startService(ctx context.Context) error {
-	conn, err := dbus.NewSystemConnectionContext(ctx)
+	conn, err := getConn(ctx)
 	if err != nil {
 		return fmt.Errorf("systemd start: connect: %w", err)
 	}
