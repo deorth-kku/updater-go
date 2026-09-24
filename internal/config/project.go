@@ -157,8 +157,13 @@ type ProcessConfig struct {
 
 // BuildConfig controls build/source-fetch behavior.
 type BuildConfig struct {
-	NoPull bool   `json:"no_pull,omitzero"`
+	Stable bool   `json:"stable,omitzero"`  // replace no_pull
+	NoPull bool   `json:"no_pull,omitzero"` // legacy
 	Branch string `json:"branch,omitzero"`
+}
+
+func (b BuildConfig) UseStable() bool {
+	return b.Stable || b.NoPull
 }
 
 // Slice allows a JSON field to be either a string or an array of strings.

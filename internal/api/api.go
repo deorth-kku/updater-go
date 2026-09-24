@@ -38,7 +38,7 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 	switch cfg.APIType {
 	case "github":
 		api := NewGitHubAPI(cfg, dl, logger)
-		api.SetNoPreRelease(buildCfg.NoPull) // github use this flag as no-prerelease
+		api.SetNoPreRelease(buildCfg.UseStable())
 		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "github",
@@ -49,7 +49,7 @@ func NewAPI(cfg config.BasicConfig, dlCfg config.DownloadConfig, verCfg config.V
 	case "appveyor":
 		api := NewAppveyorAPI(cfg, dl, logger)
 		api.SetBranch(buildCfg.Branch)
-		api.SetNoPull(buildCfg.NoPull)
+		api.SetNoPull(buildCfg.UseStable())
 		logger.Info("api backend selected",
 			"project", cfg.ProjectName,
 			"api_type", "appveyor",
