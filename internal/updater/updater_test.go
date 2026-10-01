@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/deorth-kku/updater-go/internal/adb"
 	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
 )
@@ -415,6 +416,111 @@ func TestAssetNames_Empty(t *testing.T) {
 	got := assetNames(nil)
 	if len(got) != 0 {
 		t.Errorf("assetNames(nil) len = %d, want 0", len(got))
+	}
+}
+
+// mockAdbInstaller implements adb.Installer for testing.
+type mockAdbInstaller struct {
+	called  bool
+	serial  string
+	apkPath string
+	flags   string
+}
+
+var _ adb.Installer = (*mockAdbInstaller)(nil)
+
+func (m *mockAdbInstaller) Install(_ context.Context, serial, apkPath, flags string) (string, error) {
+	m.called = true
+	m.serial = serial
+	m.apkPath = apkPath
+	m.flags = flags
+	return "Success", nil
+}
+
+func TestUpdate_AdbInstall(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+		Download: config.DownloadConfig{
+			URL: "/test.apk",
+		},
+		Decompress: config.DecompressConfig{Skip: true},
+		Adb:        config.AdbInstallConfig{Enabled: true, InstallFlags: "-r -d"},
+	}
+
+	mockAdb := &mockAdbInstaller{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir(), Device: "testdevice01"}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger).
+		WithAdbInstaller(mockAdb)
+	result := u.Update(t.Context())
+
+	if result.Error != nil {
+		t.Fatalf("Update() error = %v", result.Error)
+	}
+	if !mockAdb.called {
+		t.Fatal("adb installer was not called")
+	}
+	if mockAdb.serial != "testdevice01" {
+		t.Errorf("serial = %q, want testdevice01", mockAdb.serial)
+	}
+	if mockAdb.flags != "-r -d" {
+		t.Errorf("flags = %q, want -r -d", mockAdb.flags)
+	}
+	if mockAdb.apkPath == "" {
+		t.Error("apkPath is empty")
+	}
+	if !result.Extracted {
+		t.Error("Extracted should be true after adb install")
+	}
+}
+
+func TestUpdate_AdbDeviceOverride(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{APIType: "github"},
+		Download: config.DownloadConfig{
+			URL: "/test.apk",
+		},
+		Adb: config.AdbInstallConfig{Enabled: true, Device: "override-device"},
+	}
+
+	mockAdb := &mockAdbInstaller{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir(), Device: "entry-device"}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger).
+		WithAdbInstaller(mockAdb)
+	result := u.Update(t.Context())
+
+	if result.Error != nil {
+		t.Fatalf("Update() error = %v", result.Error)
+	}
+	if mockAdb.serial != "override-device" {
+		t.Errorf("serial = %q, want override-device (Adb.Device overrides entry.Device)", mockAdb.serial)
+	}
+}
+
+func TestUpdate_AdbNoDevice(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{APIType: "github"},
+		Download: config.DownloadConfig{
+			URL: "/test.apk",
+		},
+		Adb: config.AdbInstallConfig{Enabled: true},
+	}
+
+	mockAdb := &mockAdbInstaller{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger).
+		WithAdbInstaller(mockAdb)
+	result := u.Update(t.Context())
+
+	if result.Error == nil {
+		t.Fatal("Update() expected error when no device serial configured")
+	}
+	if mockAdb.called {
+		t.Error("adb installer should not be called when no device serial")
 	}
 }
 

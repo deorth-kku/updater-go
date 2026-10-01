@@ -15,6 +15,7 @@ type ProjectConfig struct {
 	Decompress  DecompressConfig `json:"decompress,omitzero"`
 	Process     ProcessConfig    `json:"process,omitzero"`
 	Build       BuildConfig      `json:"build,omitzero"`
+	Adb         AdbInstallConfig `json:"adb,omitzero"`
 	PostCmds    []string         `json:"post-cmds,omitzero"`
 	JSONVersion string           `json:"jsonver"`
 }
@@ -164,6 +165,15 @@ type BuildConfig struct {
 
 func (b BuildConfig) UseStable() bool {
 	return b.Stable || b.NoPull
+}
+
+// AdbInstallConfig controls ADB-based APK installation. When Enabled, the
+// downloaded APK is installed to the target device via ADB (streaming install
+// with a push fallback), replacing the decompress/process flow.
+type AdbInstallConfig struct {
+	Enabled      bool   `json:"enabled,omitzero"`
+	Device       string `json:"device,omitzero"`        // overrides ProjectEntry.Device
+	InstallFlags string `json:"install_flags,omitzero"` // pm install flags, e.g. "-r -d"
 }
 
 // Slice allows a JSON field to be either a string or an array of strings.

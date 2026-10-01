@@ -3,6 +3,7 @@ module github.com/deorth-kku/updater-go
 go 1.27
 
 require (
+	github.com/codeskyblue/go-adbkit v0.3.0
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/deorth-kku/aria2rpc-go v0.0.0-20260820133947-982e1e9f5602
 	github.com/deorth-kku/go-jsonrpc v0.0.0-20260820023532-f902a6f196ce

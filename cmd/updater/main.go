@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/deorth-kku/updater-go/internal/adb"
 	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/deorth-kku/updater-go/internal/downloader"
@@ -268,6 +269,18 @@ func run(cmd *cobra.Command, args []string) error {
 		)
 	}
 
+	// Lazily create the ADB client (with local server auto-start) the first
+	// time an adb-enabled project is processed, and share it across workers.
+	var adbClientOnce sync.Once
+	var adbClient *adb.Client
+	var adbClientErr error
+	getAdbClient := func() (*adb.Client, error) {
+		adbClientOnce.Do(func() {
+			adbClient, adbClientErr = adb.NewClientOrLocal(ctx, cfg.Adb.IP, cfg.Adb.Port, cfg.Adb.Bin, cfg.Adb.IsLocal(), logger.With("component", "adb"))
+		})
+		return adbClient, adbClientErr
+	}
+
 	// Run updates with bounded parallelism
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, jobs)
@@ -321,6 +334,20 @@ func run(cmd *cobra.Command, args []string) error {
 				u = updater.NewWithTargetVersion(*projCfg, proj, flagForce, flagRollback, aria2DL, httpDL, upLogger)
 			} else {
 				u = updater.New(*projCfg, proj, flagForce, aria2DL, httpDL, upLogger)
+			}
+			if projCfg.Adb.Enabled {
+				ac, err := getAdbClient()
+				if err != nil {
+					mu.Lock()
+					results = append(results, &updater.UpdateResult{
+						ProjectName: proj.Name,
+						OldVersion:  proj.Version,
+						Error:       fmt.Errorf("adb: %w", err),
+					})
+					mu.Unlock()
+					return
+				}
+				u = u.WithAdbInstaller(ac)
 			}
 			result := u.Update(ctx)
 			mu.Lock()

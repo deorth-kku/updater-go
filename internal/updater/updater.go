@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deorth-kku/updater-go/internal/adb"
 	"github.com/deorth-kku/updater-go/internal/api"
 	"github.com/deorth-kku/updater-go/internal/config"
 	"github.com/deorth-kku/updater-go/internal/downloader"
@@ -38,6 +39,7 @@ type Updater struct {
 	force         bool
 	dl            downloader.Downloader
 	httpDL        api.Downloader
+	adbInstaller  adb.Installer
 	logger        *slog.Logger
 	targetVersion string // empty means normal update; non-empty means rollback to this version
 }
@@ -65,6 +67,13 @@ func NewWithTargetVersion(cfg config.ProjectConfig, entry config.ProjectEntry, f
 		logger:        logger,
 		targetVersion: targetVersion,
 	}
+}
+
+// WithAdbInstaller sets the ADB installer used for projects that enable adb
+// installation. It returns the same Updater for chaining.
+func (u *Updater) WithAdbInstaller(installer adb.Installer) *Updater {
+	u.adbInstaller = installer
+	return u
 }
 
 // log returns the updater's logger, falling back to slog.Default when nil
@@ -286,6 +295,13 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		"result", localPath,
 	)
 
+	// ADB install path: when enabled, install the downloaded APK to the
+	// device and replace the decompress/process steps. Post-cmds still run.
+	if u.projectCfg.Adb.Enabled {
+		u.installViaAdb(ctx, localPath, rel.Version, result)
+		return result
+	}
+
 	// Step 4.5: When restart is NOT allowed (gap #4), mirror updater-rpc's
 	// `elif popup` branch: if the target process is still running, log a
 	// warning and wait for it to exit before extracting, so we don't extract
@@ -412,9 +428,64 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 	// identically. %DL_FILENAME maps to the downloaded file path (Python's
 	// obj.fullfilename); %PATH is wrapped in double quotes as in the Python
 	// implementation.
-	postCmds := u.projectCfg.PostCmds
-	for _, line := range postCmds {
-		replaced := replaceVars(line, u.entry.SavePath, result.ProjectName, localPath, rel.Version)
+	u.runPostCmds(ctx, localPath, rel.Version)
+
+	u.log().Info("update completed",
+		"version", rel.Version,
+		"downloaded", localPath,
+		"extracted", result.Extracted,
+		"reason", "all update steps finished",
+		"result", "ok",
+	)
+
+	return result
+}
+
+// installViaAdb installs the downloaded APK to the target device via ADB,
+// replacing the decompress/process flow. Post-cmds are still executed.
+func (u *Updater) installViaAdb(ctx context.Context, localPath, version string, result *UpdateResult) {
+	serial := u.entry.Device
+	if u.projectCfg.Adb.Device != "" {
+		serial = u.projectCfg.Adb.Device
+	}
+	if serial == "" {
+		result.Error = fmt.Errorf("adb install: no device serial configured for project %q", u.entry.Name)
+		return
+	}
+	if u.adbInstaller == nil {
+		result.Error = fmt.Errorf("adb install: no adb installer available")
+		return
+	}
+
+	u.log().Info("installing apk via adb",
+		"serial", serial,
+		"apk", localPath,
+		"flags", u.projectCfg.Adb.InstallFlags,
+		"reason", "adb enabled, replacing decompress/process",
+		"result", "begin",
+	)
+	out, err := u.adbInstaller.Install(ctx, serial, localPath, u.projectCfg.Adb.InstallFlags)
+	if err != nil {
+		result.Error = fmt.Errorf("adb install: %w", err)
+		return
+	}
+	result.Extracted = true
+	u.log().Info("adb install finished",
+		"serial", serial,
+		"apk", localPath,
+		"output", out,
+		"reason", "adb install reported success",
+		"result", "ok",
+	)
+
+	u.runPostCmds(ctx, localPath, version)
+}
+
+// runPostCmds executes the configured post-update commands with variable
+// replacement, mirroring updater-rpc's main.py loop.
+func (u *Updater) runPostCmds(ctx context.Context, localPath, version string) {
+	for _, line := range u.projectCfg.PostCmds {
+		replaced := replaceVars(line, u.entry.SavePath, u.entry.Name, localPath, version)
 		u.log().Info("running post-cmd",
 			"cmd", replaced,
 			"reason", "post-update command configured",
@@ -435,16 +506,6 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			u.log().Warn("post-cmd failed", "error", err)
 		}
 	}
-
-	u.log().Info("update completed",
-		"version", rel.Version,
-		"downloaded", localPath,
-		"extracted", result.Extracted,
-		"reason", "all update steps finished",
-		"result", "ok",
-	)
-
-	return result
 }
 
 func SelectDownloadURL(rel *api.Release, conf config.DownloadConfig, install bool, logger *slog.Logger) string {

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -67,12 +68,16 @@ func hardcodedDefaults() ProjectConfig {
 			NoPull: false,
 			Branch: "",
 		},
+		Adb: AdbInstallConfig{
+			InstallFlags: "-r -d",
+		},
 	}
 }
 
 // Config is the top-level application configuration.
 type Config struct {
 	Aria2        Aria2Config     `json:"aria2"`
+	Adb          AdbConfig       `json:"adb,omitzero"`
 	Binaries     BinariesConfig  `json:"binarys"`
 	Requests     RequestsConfig  `json:"requests"`
 	Projects     []ProjectEntry  `json:"projects"`
@@ -120,6 +125,23 @@ func (a Aria2Config) IsRemote() bool {
 	return a.IP != "" && a.IP != "127.0.0.1" && a.IP != "localhost"
 }
 
+// AdbConfig configures the ADB server connection used for APK installs.
+type AdbConfig struct {
+	IP   string `json:"ip,omitzero"`   // "127.0.0.1" or remote host
+	Port string `json:"port,omitzero"` // "5037"
+	Bin  string `json:"bin,omitzero"`  // path to the adb binary (for auto-start)
+}
+
+// Addr returns the host:port of the ADB server.
+func (a AdbConfig) Addr() string {
+	return net.JoinHostPort(a.IP, a.Port)
+}
+
+// IsLocal returns true when the ADB server runs on this host.
+func (a AdbConfig) IsLocal() bool {
+	return a.IP == "" || a.IP == "127.0.0.1" || a.IP == "localhost" || a.IP == "127.1"
+}
+
 // MetadataRepo describes a remote metadata repository.
 type MetadataRepo struct {
 	URL string `json:"url"`
@@ -129,6 +151,7 @@ type MetadataRepo struct {
 type ProjectEntry struct {
 	Name     string          `json:"name,omitzero"`
 	SavePath string          `json:"path,omitzero"`
+	Device   string          `json:"device,omitzero"` // ADB device serial (for adb installs)
 	Version  string          `json:"currentVersion,omitzero"`
 	Override json.RawMessage `json:"override,omitzero"`
 	Hold     bool            `json:"hold,omitzero"`
@@ -192,6 +215,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Aria2.Schema == "" {
 		cfg.Aria2.Schema = "ws"
+	}
+	if cfg.Adb.IP == "" {
+		cfg.Adb.IP = "127.0.0.1"
+	}
+	if cfg.Adb.Port == "" {
+		cfg.Adb.Port = "5037"
+	}
+	if cfg.Adb.Bin == "" {
+		cfg.Adb.Bin = "adb"
 	}
 	if cfg.Requests.Timeout == 0 {
 		cfg.Requests.Timeout = 30
