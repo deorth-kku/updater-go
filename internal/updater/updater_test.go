@@ -272,6 +272,36 @@ func TestDownloadFilename_NoVersion(t *testing.T) {
 	}
 }
 
+func TestDownloadFilename_URLQueryFragment(t *testing.T) {
+	tests := []struct {
+		name     string
+		dlURL    string
+		expected string
+	}{
+		{"plain URL", "http://example.com/file.zip", "file.zip"},
+		{"query string", "http://example.com/file.zip?v=d24f91279050658d44d5e66dc6e393ab", "file.zip"},
+		{"fragment", "http://example.com/file.zip#section", "file.zip"},
+		{"query and fragment", "http://example.com/file.zip?v=123#top", "file.zip"},
+		{"path with query", "https://cdn.example.com/downloads/app-1.0.7z?token=abc", "app-1.0.7z"},
+	}
+
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType: "github",
+		},
+	}
+
+	u := &Updater{projectCfg: projCfg}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := u.downloadFilename("1.0.0", tt.dlURL)
+			if result != tt.expected {
+				t.Errorf("downloadFilename(%q) = %q, want %q", tt.dlURL, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSelectDownloadURL_Index(t *testing.T) {
 	projCfg := config.ProjectConfig{
 		Basic: config.BasicConfig{

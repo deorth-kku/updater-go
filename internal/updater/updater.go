@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -646,9 +648,14 @@ func (u *Updater) downloadFilename(version, dlURL string) string {
 		)
 		return name
 	}
-	// Extract filename from URL
-	parts := strings.Split(dlURL, "/")
-	name := parts[len(parts)-1]
+	// Extract filename from URL (mirrors Python's Url.basename: strip ?query and #fragment)
+	var name string
+	u0, err := url.Parse(dlURL)
+	if err != nil {
+		name = path.Base(dlURL)
+	} else {
+		name = path.Base(u0.Path)
+	}
 	// gap #7: mirror updater-rpc's download() — insert the sanitized version
 	// before the filetype extension even for URL-derived filenames.
 	if u.projectCfg.Download.AddVersionToFilename {
