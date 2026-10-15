@@ -508,5 +508,5 @@ func loadProjectConfig(configRoot string, proj config.ProjectEntry, defaults jso
 	if err != nil {
 		return nil, fmt.Errorf("read project config %s: %w", localPath, err)
 	}
-	return config.GetProjectConfig(defaults, proj.Override, data)
+	return config.GetProjectConfig(defaults, data, proj.Override)
 }
