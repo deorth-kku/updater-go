@@ -2,8 +2,10 @@
 package updater
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"os"
@@ -355,8 +357,18 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 		// Stop process
 		stopped, err = ctrl.Stop(ctx)
 		if err != nil {
-			u.log().Warn("stop failed", "error", err)
-			return result
+			if u.isInstallMode() {
+				u.log().Warn("stop failed in install mode, continuing",
+					"error", err,
+					"reason", "service/process likely does not exist yet",
+				)
+				// A fresh install should leave the service running, so
+				// treat this as "needs start" and attempt Start below.
+				stopped = true
+			} else {
+				u.log().Warn("stop failed", "error", err)
+				return result
+			}
 		}
 	}
 
@@ -407,6 +419,15 @@ func (u *Updater) Update(ctx context.Context) *UpdateResult {
 			"reason", "decompress.skip enabled",
 			"result", "skip",
 		)
+	}
+
+	// Install cmds: run after extraction, before service start.
+	// Failure aborts the update.
+	if len(u.projectCfg.InstallCmds) > 0 && u.isInstallMode() {
+		if err := u.runInstallCmds(ctx, localPath, rel.Version); err != nil {
+			result.Error = fmt.Errorf("install cmds: %w", err)
+			return result
+		}
 	}
 
 	if ctrl != nil {
@@ -480,7 +501,27 @@ func (u *Updater) installViaAdb(ctx context.Context, localPath, version string, 
 		"result", "ok",
 	)
 
+	if len(u.projectCfg.InstallCmds) > 0 {
+		if err := u.runInstallCmds(ctx, localPath, version); err != nil {
+			result.Error = fmt.Errorf("install cmds: %w", err)
+			return
+		}
+	}
+
 	u.runPostCmds(ctx, localPath, version)
+}
+
+// runInstallCmds executes the configured install commands (after extraction,
+// before service start) with variable replacement. Unlike runPostCmds, a
+// failure aborts the update by returning the error.
+func (u *Updater) runInstallCmds(ctx context.Context, localPath, version string) error {
+	for _, line := range u.projectCfg.InstallCmds {
+		replaced := replaceVars(line, u.entry.SavePath, u.entry.Name, localPath, version)
+		if err := u.execShellCmd(ctx, "install-cmd", replaced); err != nil {
+			return fmt.Errorf("install-cmd %q: %w", replaced, err)
+		}
+	}
+	return nil
 }
 
 // runPostCmds executes the configured post-update commands with variable
@@ -488,26 +529,59 @@ func (u *Updater) installViaAdb(ctx context.Context, localPath, version string, 
 func (u *Updater) runPostCmds(ctx context.Context, localPath, version string) {
 	for _, line := range u.projectCfg.PostCmds {
 		replaced := replaceVars(line, u.entry.SavePath, u.entry.Name, localPath, version)
-		u.log().Info("running post-cmd",
-			"cmd", replaced,
-			"reason", "post-update command configured",
-			"result", "begin",
-		)
-		if replaced == "" {
-			continue
-		}
-		var cmdObj *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmdObj = exec.Command("cmd", "/c", replaced)
-		} else {
-			cmdObj = exec.Command("sh", "-c", replaced)
-		}
-		cmdObj.Stdout = nil
-		cmdObj.Stderr = nil
-		if err := cmdObj.Run(); err != nil {
-			u.log().Warn("post-cmd failed", "error", err)
+		if err := u.execShellCmd(ctx, "post-cmd", replaced); err != nil {
+			u.log().Warn("post-cmd failed", "cmd", replaced, "error", err)
 		}
 	}
+}
+
+// execShellCmd runs a single command through the system shell, logging
+// stdout at info level and stderr at warn level.
+func (u *Updater) execShellCmd(ctx context.Context, label, cmdStr string) error {
+	if cmdStr == "" {
+		return nil
+	}
+	u.log().Info("running "+label, "cmd", cmdStr, "result", "begin")
+
+	var cmdObj *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmdObj = exec.CommandContext(ctx, "cmd", "/c", cmdStr)
+	} else {
+		cmdObj = exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	}
+	stdout := getPipeReader(u.log(), label, func(line string) {
+		u.log().Info(label+" stdout", "line", line)
+	})
+	defer stdout.Close()
+	stderr := getPipeReader(u.log(), label, func(line string) {
+		u.log().Warn(label+" stderr", "line", line)
+	})
+	defer stderr.Close()
+
+	cmdObj.Stdout = stdout
+	cmdObj.Stderr = stderr
+
+	return cmdObj.Run()
+}
+
+// getPipeReader streams lines from a pipe to f. The scanner's max token
+// size is raised to 4MB: io.Pipe is synchronous, so if the scanner stopped
+// on a too-long line the child would block forever on write and
+// Cmd.Run() would hang.
+func getPipeReader(log *slog.Logger, label string, f func(line string)) *io.PipeWriter {
+	rd, wt := io.Pipe()
+	go func() {
+		scanner := bufio.NewScanner(rd)
+		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+		for scanner.Scan() {
+			f(scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			log.Warn(label+" pipe read failed", "error", err)
+		}
+		rd.Close()
+	}()
+	return wt
 }
 
 func SelectDownloadURL(rel *api.Release, conf config.DownloadConfig, install bool, logger *slog.Logger) string {

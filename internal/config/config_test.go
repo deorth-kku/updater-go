@@ -233,3 +233,42 @@ func TestLoad_RealConfig_GetProjectConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectConfig_InstallCmds_JSON(t *testing.T) {
+	data := []byte(`{
+		"basic": {"api_type": "github"},
+		"install-cmds": ["mkdir -p /opt/app", "chmod +x /opt/app/init.sh"],
+		"post-cmds": ["echo done"]
+	}`)
+
+	var pc ProjectConfig
+	if err := json.Unmarshal(data, &pc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(pc.InstallCmds) != 2 {
+		t.Fatalf("len(InstallCmds) = %d, want 2", len(pc.InstallCmds))
+	}
+	if pc.InstallCmds[0] != "mkdir -p /opt/app" {
+		t.Errorf("InstallCmds[0] = %q", pc.InstallCmds[0])
+	}
+	if pc.InstallCmds[1] != "chmod +x /opt/app/init.sh" {
+		t.Errorf("InstallCmds[1] = %q", pc.InstallCmds[1])
+	}
+	if len(pc.PostCmds) != 1 || pc.PostCmds[0] != "echo done" {
+		t.Errorf("PostCmds = %v, want [echo done]", pc.PostCmds)
+	}
+}
+
+func TestProjectConfig_InstallCmds_Absent(t *testing.T) {
+	data := []byte(`{"basic": {"api_type": "github"}}`)
+
+	var pc ProjectConfig
+	if err := json.Unmarshal(data, &pc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if pc.InstallCmds != nil {
+		t.Errorf("InstallCmds = %v, want nil when absent", pc.InstallCmds)
+	}
+}

@@ -3,11 +3,16 @@ package updater
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/deorth-kku/updater-go/internal/adb"
 	"github.com/deorth-kku/updater-go/internal/api"
@@ -573,4 +578,218 @@ func TestArtifactNames_Empty(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("artifactNames(nil) len = %d, want 0", len(got))
 	}
+}
+
+func TestUpdate_ServiceInstallMode_StopFails(t *testing.T) {
+	// In install mode (no recorded version), service stop failure should not
+	// abort the update — the service doesn't exist yet.
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType:     "github",
+			ProjectName: "test-service",
+		},
+		Download: config.DownloadConfig{
+			URL: "/test.zip",
+		},
+		Decompress: config.DecompressConfig{Skip: true},
+		Process: config.ProcessConfig{
+			ImageName:    "nonexistent-service-xyz",
+			AllowRestart: true,
+			Service:      true,
+			RestartWait:  0,
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Version is empty → isInstallMode() returns true
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
+
+	// Should NOT fail because service stop failed in install mode
+	if result.Error != nil {
+		t.Fatalf("Update() error = %v, want nil (install mode should tolerate stop failure)", result.Error)
+	}
+}
+
+func TestUpdate_InstallCmds_Success(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType:     "github",
+			ProjectName: "test-app",
+		},
+		Download: config.DownloadConfig{
+			URL: "/test.zip",
+		},
+		Decompress:  config.DecompressConfig{Skip: true},
+		InstallCmds: []string{"true"},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
+
+	if result.Error != nil {
+		t.Fatalf("Update() error = %v, want nil", result.Error)
+	}
+}
+
+func TestUpdate_InstallCmds_Failure(t *testing.T) {
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType:     "github",
+			ProjectName: "test-app",
+		},
+		Download: config.DownloadConfig{
+			URL: "/test.zip",
+		},
+		Decompress:  config.DecompressConfig{Skip: true},
+		InstallCmds: []string{"false"},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: t.TempDir()}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
+
+	if result.Error == nil {
+		t.Fatal("Update() expected error when install-cmds fails")
+	}
+	if !contains(result.Error.Error(), "install cmds") {
+		t.Errorf("error = %q, want it to contain %q", result.Error.Error(), "install cmds")
+	}
+}
+
+func TestUpdate_InstallCmds_VariableSubstitution(t *testing.T) {
+	saveDir := t.TempDir()
+	projCfg := config.ProjectConfig{
+		Basic: config.BasicConfig{
+			APIType:     "github",
+			ProjectName: "test-app",
+		},
+		Download: config.DownloadConfig{
+			URL: "/test.zip",
+		},
+		Decompress:  config.DecompressConfig{Skip: true},
+		InstallCmds: []string{fmt.Sprintf("test -d %q", saveDir)},
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	u := New(projCfg, config.ProjectEntry{SavePath: saveDir}, true, &mockDownloader{}, &mockHTTPDownloader{}, logger)
+	result := u.Update(t.Context())
+
+	if result.Error != nil {
+		t.Fatalf("Update() error = %v, want nil", result.Error)
+	}
+}
+
+func TestRunInstallCmds_Empty(t *testing.T) {
+	projCfg := config.ProjectConfig{}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	u := &Updater{projectCfg: projCfg, entry: config.ProjectEntry{SavePath: "/tmp"}, logger: logger}
+
+	err := u.runInstallCmds(context.Background(), "/tmp/file.zip", "1.0.0")
+	if err != nil {
+		t.Errorf("runInstallCmds() with no cmds = %v, want nil", err)
+	}
+}
+
+// discardLogger returns a logger that drops all output, for tests that
+// only care about the line callback.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestGetPipeReader(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+
+	w := getPipeReader(discardLogger(), "test", func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	})
+
+	// Write multiple lines
+	w.Write([]byte("hello\n"))
+	w.Write([]byte("world\n"))
+	w.Write([]byte("third line\n"))
+	w.Close()
+
+	// Give the goroutine time to finish reading
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3: %v", len(lines), lines)
+	}
+	if lines[0] != "hello" || lines[1] != "world" || lines[2] != "third line" {
+		t.Errorf("lines = %v, want [hello world third line]", lines)
+	}
+}
+
+func TestGetPipeReader_Empty(t *testing.T) {
+	called := false
+	w := getPipeReader(discardLogger(), "test", func(string) { called = true })
+	w.Close()
+
+	time.Sleep(50 * time.Millisecond)
+	if called {
+		t.Error("callback should not be called for empty input")
+	}
+}
+
+func TestGetPipeReader_SingleLineNoNewline(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+
+	w := getPipeReader(discardLogger(), "test", func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	})
+
+	// Write without trailing newline — bufio.Scanner should still emit it
+	w.Write([]byte("no trailing newline"))
+	w.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 1 || lines[0] != "no trailing newline" {
+		t.Errorf("lines = %v, want [no trailing newline]", lines)
+	}
+}
+
+func TestGetPipeReader_LongLine(t *testing.T) {
+	// A single line longer than bufio.Scanner's default 64KB limit must
+	// not stall the pipe (which would hang Cmd.Run).
+	var mu sync.Mutex
+	var lines []string
+
+	w := getPipeReader(discardLogger(), "test", func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	})
+
+	long := strings.Repeat("a", 70*1024) + "\n"
+	w.Write([]byte(long))
+	w.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 1 || len(lines[0]) != 70*1024 {
+		t.Fatalf("got %d line(s), want 1 line of %d chars", len(lines), 70*1024)
+	}
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }

@@ -16,6 +16,7 @@ type ProjectConfig struct {
 	Process     ProcessConfig    `json:"process,omitzero"`
 	Build       BuildConfig      `json:"build,omitzero"`
 	Adb         AdbInstallConfig `json:"adb,omitzero"`
+	InstallCmds []string         `json:"install-cmds,omitzero"`
 	PostCmds    []string         `json:"post-cmds,omitzero"`
 	JSONVersion string           `json:"jsonver"`
 }
