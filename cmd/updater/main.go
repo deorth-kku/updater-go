@@ -3,7 +3,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -404,7 +405,7 @@ func writeJSON(path string, data any) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	defer f.Close()
-	out, err := json.MarshalIndent(data, "", "  ")
+	out, err := json.Marshal(data, jsontext.WithIndent("  "))
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
@@ -502,7 +503,7 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-func loadProjectConfig(configRoot string, proj config.ProjectEntry, defaults json.RawMessage) (*config.ProjectConfig, error) {
+func loadProjectConfig(configRoot string, proj config.ProjectEntry, defaults jsontext.Value) (*config.ProjectConfig, error) {
 	localPath := config.ProjectConfigPath(configRoot, proj.Name)
 	data, err := os.ReadFile(localPath)
 	if err != nil {

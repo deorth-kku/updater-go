@@ -1,7 +1,8 @@
 package config
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net"
 	"os"
@@ -76,16 +77,16 @@ func hardcodedDefaults() ProjectConfig {
 
 // Config is the top-level application configuration.
 type Config struct {
-	Aria2        Aria2Config     `json:"aria2"`
-	Adb          AdbConfig       `json:"adb,omitzero"`
-	Binaries     BinariesConfig  `json:"binarys"`
-	Requests     RequestsConfig  `json:"requests"`
-	Projects     []ProjectEntry  `json:"projects"`
-	Repositories []string        `json:"repository,omitzero"`
-	Defaults     json.RawMessage `json:"defaults,omitzero"`
-	LocalDir     string          `json:"local-dir,omitzero"`
-	Metadata     []MetadataRepo  `json:"metadata,omitzero"`
-	JSONVer      string          `json:"jsonver,omitzero"`
+	Aria2        Aria2Config    `json:"aria2"`
+	Adb          AdbConfig      `json:"adb,omitzero"`
+	Binaries     BinariesConfig `json:"binarys"`
+	Requests     RequestsConfig `json:"requests"`
+	Projects     []ProjectEntry `json:"projects"`
+	Repositories []string       `json:"repository,omitzero"`
+	Defaults     jsontext.Value `json:"defaults,omitzero"`
+	LocalDir     string         `json:"local-dir,omitzero"`
+	Metadata     []MetadataRepo `json:"metadata,omitzero"`
+	JSONVer      string         `json:"jsonver,omitzero"`
 }
 
 // BinariesConfig configures binary paths.
@@ -149,12 +150,12 @@ type MetadataRepo struct {
 
 // ProjectEntry describes one project in the main config.
 type ProjectEntry struct {
-	Name     string          `json:"name,omitzero"`
-	SavePath string          `json:"path,omitzero"`
-	Device   string          `json:"device,omitzero"` // ADB device serial (for adb installs)
-	Version  string          `json:"currentVersion,omitzero"`
-	Override json.RawMessage `json:"override,omitzero"`
-	Hold     bool            `json:"hold,omitzero"`
+	Name     string         `json:"name,omitzero"`
+	SavePath string         `json:"path,omitzero"`
+	Device   string         `json:"device,omitzero"` // ADB device serial (for adb installs)
+	Version  string         `json:"currentVersion,omitzero"`
+	Override jsontext.Value `json:"override,omitzero"`
+	Hold     bool           `json:"hold,omitzero"`
 }
 
 func (p ProjectEntry) Enabled() bool {
@@ -171,7 +172,7 @@ func Load(path string) (*Config, error) {
 	cfg := &Config{}
 
 	// First, try to detect legacy format (projects as map)
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
@@ -256,7 +257,7 @@ func ProjectConfigPath(root, name string) string {
 //
 // pcFileBytes is the raw JSON bytes from the project config file.
 // defaults is the "defaults" field from the main config.json (may be nil).
-func GetProjectConfig(layers ...json.RawMessage) (*ProjectConfig, error) {
+func GetProjectConfig(layers ...jsontext.Value) (*ProjectConfig, error) {
 	// 1. Start with hardcoded defaults
 	base := hardcodedDefaults()
 

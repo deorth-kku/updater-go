@@ -2,7 +2,8 @@ package updater
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -117,7 +118,7 @@ func TestUpdate_ConfigWriteback(t *testing.T) {
 	}
 
 	// Write initial config
-	cfgData, _ := json.MarshalIndent(projCfg, "", "  ")
+	cfgData, _ := json.Marshal(projCfg, jsontext.WithIndent("  "))
 	cfgPath := filepath.Join(configDir, "test-project.json")
 	os.WriteFile(cfgPath, cfgData, 0o644)
 

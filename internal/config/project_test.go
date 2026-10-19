@@ -1,7 +1,8 @@
 package config
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,7 +148,7 @@ func TestProjectConfig_GetProjectConfig(t *testing.T) {
 // TestProjectConfig_GetProjectConfig_WithDefaults verifies that Config.Defaults overlay works.
 func TestProjectConfig_GetProjectConfig_WithDefaults(t *testing.T) {
 	data := []byte(`{"basic": {"api_type": "github", "account_name": "test", "project_name": "test"}}`)
-	defaults := json.RawMessage(`{"download": {"try_redirect": false}, "process": {"restart_wait": 5}}`)
+	defaults := jsontext.Value(`{"download": {"try_redirect": false}, "process": {"restart_wait": 5}}`)
 
 	pc, err := GetProjectConfig(defaults, data)
 	if err != nil {
