@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,12 +170,7 @@ func (c *Client) hasAbbExec() bool {
 	if err != nil {
 		return false
 	}
-	for _, f := range features {
-		if f == "abb_exec" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(features, "abb_exec")
 }
 
 // installStreaming performs a streaming install via the abb_exec protocol:

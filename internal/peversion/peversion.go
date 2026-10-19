@@ -148,7 +148,7 @@ func walkResourceDir(data []byte, dirBase, rootBase, sectionVA, size, depth int)
 	entryCount := int(named) + int(id)
 	entryBase := dirBase + 16
 
-	for i := 0; i < entryCount; i++ {
+	for i := range entryCount {
 		off := entryBase + i*8
 		if off+8 > len(data) {
 			break
@@ -277,11 +277,4 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

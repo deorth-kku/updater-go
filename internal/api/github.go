@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/deorth-kku/updater-go/internal/config"
@@ -52,6 +53,7 @@ func (g *GitHubAPI) fetchAllReleases(ctx context.Context, page int) ([]githubRel
 	if err != nil {
 		return nil, fmt.Errorf("github releases: %w", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		g.logger.Error("github query failed",
 			"account", g.accountName,
@@ -60,11 +62,12 @@ func (g *GitHubAPI) fetchAllReleases(ctx context.Context, page int) ([]githubRel
 			"reason", "github API returned non-200 status",
 			"result", "error",
 		)
-		return nil, fmt.Errorf("github releases returned status %d: %s", resp.StatusCode, string(resp.Body))
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("github releases returned status %d: %s", resp.StatusCode, string(errBody))
 	}
 
 	var releases []githubRelease
-	if err := json.Unmarshal(resp.Body, &releases); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &releases); err != nil {
 		return nil, fmt.Errorf("parse github releases: %w", err)
 	}
 	if len(releases) == 0 {

@@ -40,8 +40,9 @@ func (a *ApiJsonAPI) fetchJSON(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("apijson fetch: %w", err)
 	}
+	defer resp.Body.Close()
 
-	if err := json.Unmarshal(resp.Body, &a.jsonData); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &a.jsonData); err != nil {
 		return fmt.Errorf("parse apijson: %w", err)
 	}
 	return nil

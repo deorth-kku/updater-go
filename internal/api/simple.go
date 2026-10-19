@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -13,6 +14,16 @@ import (
 
 	"github.com/deorth-kku/updater-go/internal/config"
 )
+
+// readBody reads the full response body, closes it, and returns it as a string.
+func readBody(resp *HTTPResponse) (string, error) {
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
 
 // SimpleSpiderAPI implements API for regex-based web scraping (e.g. go.dev/dl).
 type SimpleSpiderAPI struct {
@@ -169,14 +180,14 @@ func (s *SimpleSpiderAPI) fetchPage(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("simplespider fetch page: %w", err)
 		}
-		return string(resp.Body), nil
+		return readBody(resp)
 	}
 
 	resp, err := s.downloader.Get(ctx, s.pageURL, s.headers)
 	if err != nil {
 		return "", fmt.Errorf("simplespider fetch page: %w", err)
 	}
-	return string(resp.Body), nil
+	return readBody(resp)
 }
 
 // fetchURL performs a GET (with the configured headers) on an arbitrary URL
@@ -187,7 +198,7 @@ func (s *SimpleSpiderAPI) fetchURL(ctx context.Context, rawURL string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("simplespider fetch %s: %w", rawURL, err)
 	}
-	return string(resp.Body), nil
+	return readBody(resp)
 }
 
 func (s *SimpleSpiderAPI) extractURLFromPage(ctx context.Context, page string) (string, error) {

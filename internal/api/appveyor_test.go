@@ -82,9 +82,9 @@ func TestAppveyorAPI_LatestByVersion_Match(t *testing.T) {
 	hBody, _ := json.Marshal(history)
 	bBody, _ := json.Marshal(buildDetail)
 	aBody, _ := json.Marshal(artifacts)
-	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", &HTTPResponse{StatusCode: 200, Body: hBody})
-	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/build/1.0.1", &HTTPResponse{StatusCode: 200, Body: bBody})
-	mdl.On("/api/buildjobs/job-123/artifacts", &HTTPResponse{StatusCode: 200, Body: aBody})
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", resp(200, hBody))
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/build/1.0.1", resp(200, bBody))
+	mdl.On("/api/buildjobs/job-123/artifacts", resp(200, aBody))
 
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "blueskythlikesclouds",
@@ -118,7 +118,7 @@ func TestAppveyorAPI_LatestByVersion_NotFound(t *testing.T) {
 
 	mdl := newMockDownloader()
 	hBody, _ := json.Marshal(history)
-	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", &HTTPResponse{StatusCode: 200, Body: hBody})
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", resp(200, hBody))
 
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "blueskythlikesclouds",

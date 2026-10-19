@@ -1,6 +1,9 @@
 package peversion
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 var nonVersionChars = regexp.MustCompile(`[^0-9.\-]`)
 
@@ -78,19 +81,20 @@ func replaceAll(s, old, new string) string {
 	if old == "" {
 		return s
 	}
-	out := ""
+	var out strings.Builder
 	start := 0
 	for i := 0; i+len(old) <= len(s); {
 		if s[i:i+len(old)] == old {
-			out += s[start:i] + new
+			out.WriteString(s[start:i])
+			out.WriteString(new)
 			i += len(old)
 			start = i
 		} else {
 			i++
 		}
 	}
-	out += s[start:]
-	return out
+	out.WriteString(s[start:])
+	return out.String()
 }
 
 func splitDots(s string) []string {

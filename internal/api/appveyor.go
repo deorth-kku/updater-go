@@ -68,9 +68,10 @@ func (a *AppveyorAPI) fetchAllBuilds(ctx context.Context) (appveyorHistory, erro
 	if err != nil {
 		return appveyorHistory{}, fmt.Errorf("appveyor history: %w", err)
 	}
+	defer resp.Body.Close()
 
 	var history appveyorHistory
-	if err := json.Unmarshal(resp.Body, &history); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &history); err != nil {
 		return appveyorHistory{}, fmt.Errorf("parse appveyor history: %w", err)
 	}
 	return history, nil
@@ -143,9 +144,10 @@ func (a *AppveyorAPI) fetchBuildDetail(ctx context.Context, build appveyorBuild)
 	if err != nil {
 		return nil, errors.Join(errHttpFailed, err)
 	}
+	defer buildResp.Body.Close()
 
 	var buildDetail appveyorBuildDetail
-	if err := json.Unmarshal(buildResp.Body, &buildDetail); err != nil {
+	if err := json.UnmarshalRead(buildResp.Body, &buildDetail); err != nil {
 		return nil, fmt.Errorf("parse appveyor build detail: %w", err)
 	}
 
@@ -159,9 +161,10 @@ func (a *AppveyorAPI) fetchBuildDetail(ctx context.Context, build appveyorBuild)
 	if err != nil {
 		return nil, fmt.Errorf("appveyor artifacts: %w", err)
 	}
+	defer artResp.Body.Close()
 
 	var artifacts []AppveyorArtifact
-	if err := json.Unmarshal(artResp.Body, &artifacts); err != nil {
+	if err := json.UnmarshalRead(artResp.Body, &artifacts); err != nil {
 		return nil, fmt.Errorf("parse appveyor artifacts: %w", err)
 	}
 

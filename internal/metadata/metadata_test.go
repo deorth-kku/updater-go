@@ -1,14 +1,21 @@
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/deorth-kku/updater-go/internal/api"
 )
+
+// resp builds an api.HTTPResponse with a streaming byte body for tests.
+func resp(status int, body []byte) *api.HTTPResponse {
+	return &api.HTTPResponse{StatusCode: status, Body: io.NopCloser(bytes.NewReader(body))}
+}
 
 // mockHTTPDownloader returns predefined metadata responses.
 type mockHTTPDownloader struct {
@@ -24,10 +31,10 @@ func (m *mockHTTPDownloader) On(url string, resp *api.HTTPResponse) {
 }
 
 func (m *mockHTTPDownloader) Get(_ context.Context, url string, _ map[string]string) (*api.HTTPResponse, error) {
-	if resp, ok := m.responses[url]; ok {
-		return resp, nil
+	if r, ok := m.responses[url]; ok {
+		return r, nil
 	}
-	return &api.HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
+	return resp(404, []byte("not found")), nil
 }
 
 func (m *mockHTTPDownloader) Post(ctx context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
@@ -42,10 +49,7 @@ func TestStore_Load(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -89,12 +93,8 @@ func TestStore_LoadMultipleRepos(t *testing.T) {
 	body2, _ := json.Marshal(entries2)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo1/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body1,
-	})
-	mock.On("https://example.com/repo2/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body2,
-	})
+	mock.On("https://example.com/repo1/metadata.json", resp(200, body1))
+	mock.On("https://example.com/repo2/metadata.json", resp(200, body2))
 
 	store := NewStore([]string{"https://example.com/repo1", "https://example.com/repo2"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -122,9 +122,7 @@ func TestStore_LoadMultipleRepos(t *testing.T) {
 
 func TestStore_LoadFailure(t *testing.T) {
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 500, Body: []byte("server error"),
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(500, []byte("server error")))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	err := store.Load(t.Context())
@@ -140,9 +138,7 @@ func TestStore_Entries(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -165,9 +161,7 @@ func TestStore_EntriesReturnsCopy(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -191,9 +185,7 @@ func TestStore_EnsureLocalConfig_NotFound(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -214,12 +206,8 @@ func TestStore_EnsureLocalConfig_DownloadsNewConfig(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
-	mock.On("https://example.com/configs/project-a.json", &api.HTTPResponse{
-		StatusCode: 200, Body: []byte(`{"basic": {"api_type": "github"}}`),
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
+	mock.On("https://example.com/configs/project-a.json", resp(200, []byte(`{"basic": {"api_type": "github"}}`)))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -248,9 +236,7 @@ func TestStore_EnsureLocalConfig_LocalConfigExists(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -303,9 +289,7 @@ func TestStore_EnsureLocalConfig_LocalConfigUpToDate(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -339,12 +323,8 @@ func TestStore_EnsureLocalConfig_LocalConfigOlder(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
-	mock.On("https://example.com/configs/project-a.json", &api.HTTPResponse{
-		StatusCode: 200, Body: []byte(`{"basic": {"api_type": "github"}}`),
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
+	mock.On("https://example.com/configs/project-a.json", resp(200, []byte(`{"basic": {"api_type": "github"}}`)))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -380,9 +360,7 @@ func TestStore_EnsureLocalConfig_EmptyDate(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -416,12 +394,8 @@ func TestStore_DownloadConfig(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
-	mock.On("https://example.com/repo/configs/project-a.json", &api.HTTPResponse{
-		StatusCode: 200, Body: []byte(`{"basic": {"api_type": "github"}}`),
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
+	mock.On("https://example.com/repo/configs/project-a.json", resp(200, []byte(`{"basic": {"api_type": "github"}}`)))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {
@@ -454,12 +428,8 @@ func TestStore_DownloadConfig_DownloadsToCorrectPath(t *testing.T) {
 	body, _ := json.Marshal(entries)
 
 	mock := newMockHTTPDownloader()
-	mock.On("https://example.com/repo/metadata.json", &api.HTTPResponse{
-		StatusCode: 200, Body: body,
-	})
-	mock.On("https://example.com/repo/configs/my-project.json", &api.HTTPResponse{
-		StatusCode: 200, Body: []byte(`{"basic": {"api_type": "github"}}`),
-	})
+	mock.On("https://example.com/repo/metadata.json", resp(200, body))
+	mock.On("https://example.com/repo/configs/my-project.json", resp(200, []byte(`{"basic": {"api_type": "github"}}`)))
 
 	store := NewStore([]string{"https://example.com/repo"}, mock)
 	if err := store.Load(t.Context()); err != nil {

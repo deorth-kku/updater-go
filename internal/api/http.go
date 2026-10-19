@@ -19,10 +19,11 @@ type Downloader interface {
 	Post(ctx context.Context, url string, body []byte, headers map[string]string) (*HTTPResponse, error)
 }
 
-// HTTPResponse represents an HTTP response.
+// HTTPResponse represents an HTTP response. Body is a stream that the caller
+// is responsible for reading and Closing.
 type HTTPResponse struct {
 	StatusCode int
-	Body       []byte
+	Body       io.ReadCloser
 	Header     http.Header
 }
 
@@ -95,11 +96,8 @@ func parseProxyURL(raw string) *url.URL {
 
 func (h *httpClient) Get(ctx context.Context, url string, headers map[string]string) (*HTTPResponse, error) {
 	var lastErr error
-	attempts := h.retry + 1
-	if attempts < 1 {
-		attempts = 1
-	}
-	for attempt := 0; attempt < attempts; attempt++ {
+	attempts := max(h.retry+1, 1)
+	for attempt := range attempts {
 		if attempt > 0 {
 			// Exponential backoff: 200ms, 400ms, 800ms, ... capped at 2s.
 			backoff := 200 * time.Millisecond
@@ -132,24 +130,15 @@ func (h *httpClient) Get(ctx context.Context, url string, headers map[string]str
 			continue
 		}
 
-		body, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
-			if !shouldRetry(nil, readErr) {
-				return nil, readErr
-			}
-			continue
-		}
-
 		if shouldRetry(resp, nil) {
+			resp.Body.Close()
 			lastErr = fmt.Errorf("retryable status %d", resp.StatusCode)
 			continue
 		}
 
 		return &HTTPResponse{
 			StatusCode: resp.StatusCode,
-			Body:       body,
+			Body:       resp.Body,
 			Header:     resp.Header,
 		}, nil
 	}
@@ -163,11 +152,8 @@ func (h *httpClient) Get(ctx context.Context, url string, headers map[string]str
 // It reuses the same retry logic as Get.
 func (h *httpClient) Post(ctx context.Context, rawURL string, body []byte, headers map[string]string) (*HTTPResponse, error) {
 	var lastErr error
-	attempts := h.retry + 1
-	if attempts < 1 {
-		attempts = 1
-	}
-	for attempt := 0; attempt < attempts; attempt++ {
+	attempts := max(h.retry+1, 1)
+	for attempt := range attempts {
 		if attempt > 0 {
 			backoff := 200 * time.Millisecond
 			for i := 1; i < attempt; i++ {
@@ -200,24 +186,15 @@ func (h *httpClient) Post(ctx context.Context, rawURL string, body []byte, heade
 			continue
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
-			if !shouldRetry(nil, readErr) {
-				return nil, readErr
-			}
-			continue
-		}
-
 		if shouldRetry(resp, nil) {
+			resp.Body.Close()
 			lastErr = fmt.Errorf("retryable status %d", resp.StatusCode)
 			continue
 		}
 
 		return &HTTPResponse{
 			StatusCode: resp.StatusCode,
-			Body:       respBody,
+			Body:       resp.Body,
 			Header:     resp.Header,
 		}, nil
 	}

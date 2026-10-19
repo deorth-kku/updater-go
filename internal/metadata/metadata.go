@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -64,9 +65,10 @@ func (s *Store) Load(ctx context.Context) error {
 			fmt.Printf("getting metadata from repo %s failed, cause: %s .skipping\n", repoURL, err)
 			continue
 		}
+		defer resp.Body.Close()
 
 		var entries map[string]Entry
-		if err := json.Unmarshal(resp.Body, &entries); err != nil {
+		if err := json.UnmarshalRead(resp.Body, &entries); err != nil {
 			fmt.Printf("parse metadata from %s failed: %s\n", metaURL, err)
 			continue
 		}
@@ -161,13 +163,29 @@ func (s *Store) downloadConfig(ctx context.Context, entry Entry, localPath strin
 	if err != nil {
 		return fmt.Errorf("download config for %s: %w", entry.URL, err)
 	}
+	defer resp.Body.Close()
 
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	if err := os.WriteFile(localPath, resp.Body, 0o644); err != nil {
+	f, err := os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create config file: %w", err)
+	}
+	// removePartial closes the file and removes it, cleaning up a file that
+	// could not be written completely.
+	removePartial := func() {
+		f.Close()
+		os.Remove(localPath)
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		removePartial()
 		return fmt.Errorf("write config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(localPath)
+		return fmt.Errorf("close config file: %w", err)
 	}
 
 	return nil

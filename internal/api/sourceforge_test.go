@@ -35,7 +35,7 @@ func TestSourceforge_Latest_Filtering(t *testing.T) {
   </channel>
 </rss>`
 	mdl := newMockDownloader()
-	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+	mdl.On("/projects/sevenzip/rss", resp(200, []byte(rss)))
 
 	api := NewSourceforgeAPI(
 		config.BasicConfig{ProjectName: "sevenzip"},
@@ -82,7 +82,7 @@ func TestSourceforgeAPI_LatestByVersion_Match(t *testing.T) {
   </channel>
 </rss>`
 	mdl := newMockDownloader()
-	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+	mdl.On("/projects/sevenzip/rss", resp(200, []byte(rss)))
 
 	api := NewSourceforgeAPI(
 		config.BasicConfig{ProjectName: "sevenzip"},
@@ -116,7 +116,7 @@ func TestSourceforgeAPI_LatestByVersion_NotFound(t *testing.T) {
   </channel>
 </rss>`
 	mdl := newMockDownloader()
-	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+	mdl.On("/projects/sevenzip/rss", resp(200, []byte(rss)))
 
 	api := NewSourceforgeAPI(
 		config.BasicConfig{ProjectName: "sevenzip"},

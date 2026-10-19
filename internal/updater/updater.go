@@ -758,8 +758,8 @@ func sanitizeVersion(v string) string {
 func addVersionToName(name, version string, filetypes []string) string {
 	version = sanitizeVersion(version)
 	for _, ft := range filetypes {
-		if strings.HasSuffix(name, ft) {
-			base := strings.TrimSuffix(name, ft)
+		if before, ok := strings.CutSuffix(name, ft); ok {
+			base := before
 			base = strings.TrimSuffix(base, ".")
 			return base + "_" + version + "." + ft
 		}

@@ -62,9 +62,11 @@ func (s *SourceforgeAPI) fetchAllItems(ctx context.Context) ([]rssItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sourceforge rss: %w", err)
 	}
+	defer resp.Body.Close()
 
+	dec := xml.NewDecoder(resp.Body)
 	var feed rssFeed
-	if err := xml.Unmarshal(resp.Body, &feed); err != nil {
+	if err := dec.Decode(&feed); err != nil {
 		return nil, fmt.Errorf("parse sourceforge rss: %w", err)
 	}
 	return feed.Channel.Item, nil

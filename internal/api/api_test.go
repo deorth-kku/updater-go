@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +12,11 @@ import (
 
 	"github.com/deorth-kku/updater-go/internal/config"
 )
+
+// resp builds an HTTPResponse with a streaming byte body for tests.
+func resp(status int, body []byte) *HTTPResponse {
+	return &HTTPResponse{StatusCode: status, Body: io.NopCloser(bytes.NewReader(body))}
+}
 
 // mockDownloader is an in-memory mock that returns predefined responses.
 type mockDownloader struct {
@@ -38,7 +45,7 @@ func (m *mockDownloader) Get(_ context.Context, url string, _ map[string]string)
 	if resp, ok := m.handlers[path]; ok {
 		return resp, nil
 	}
-	return &HTTPResponse{StatusCode: 404, Body: []byte("not found")}, nil
+	return resp(404, []byte("not found")), nil
 }
 
 func (m *mockDownloader) Post(ctx context.Context, url string, _ []byte, _ map[string]string) (*HTTPResponse, error) {
@@ -59,10 +66,7 @@ func TestGitHubAPI_Latest(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(fixture)
-	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/repos/git-for-windows/git/releases", resp(200, body))
 
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "git-for-windows",
@@ -103,10 +107,7 @@ func TestGitHubAPI_LatestByVersion_MatchByName(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(fixture)
-	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/repos/git-for-windows/git/releases", resp(200, body))
 
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "git-for-windows",
@@ -147,10 +148,7 @@ func TestGitHubAPI_LatestByVersion_MatchByTagName(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(fixture)
-	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/repos/git-for-windows/git/releases", resp(200, body))
 
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "git-for-windows",
@@ -179,10 +177,7 @@ func TestGitHubAPI_LatestByVersion_NotFound(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(fixture)
-	mdl.On("/repos/git-for-windows/git/releases", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/repos/git-for-windows/git/releases", resp(200, body))
 
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "git-for-windows",
@@ -216,9 +211,9 @@ func TestAppveyorAPI_Latest(t *testing.T) {
 	hBody, _ := json.Marshal(history)
 	bBody, _ := json.Marshal(buildDetail)
 	aBody, _ := json.Marshal(artifacts)
-	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", &HTTPResponse{StatusCode: 200, Body: hBody})
-	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/build/1.0.1", &HTTPResponse{StatusCode: 200, Body: bBody})
-	mdl.On("/api/buildjobs/job-123/artifacts", &HTTPResponse{StatusCode: 200, Body: aBody})
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/history", resp(200, hBody))
+	mdl.On("/api/projects/blueskythlikesclouds/mikumikulibrary/build/1.0.1", resp(200, bBody))
+	mdl.On("/api/buildjobs/job-123/artifacts", resp(200, aBody))
 
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "blueskythlikesclouds",
@@ -245,7 +240,7 @@ func TestSourceforgeAPI_Latest(t *testing.T) {
 </channel></rss>`
 
 	mdl := newMockDownloader()
-	mdl.On("/projects/sevenzip/rss", &HTTPResponse{StatusCode: 200, Body: []byte(rss)})
+	mdl.On("/projects/sevenzip/rss", resp(200, []byte(rss)))
 
 	api := NewSourceforgeAPI(config.BasicConfig{ProjectName: "sevenzip"}, config.DownloadConfig{Filetype: config.Slice[string]{"exe"}}, mdl, slog.Default())
 
@@ -283,7 +278,7 @@ func TestApiJsonAPI_Latest(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(jsonData)
-	mdl.On("/builds", &HTTPResponse{StatusCode: 200, Body: body})
+	mdl.On("/builds", resp(200, body))
 
 	path := []config.StringOrJsonPath{
 		{Str: "https://skyline-builds.alula.gay/cache"},
@@ -357,10 +352,7 @@ func TestGitHubAPI_NoPull(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(releases)
-	mdl.On("/repos/test/project/releases", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/repos/test/project/releases", resp(200, body))
 
 	api := NewGitHubAPI(config.BasicConfig{
 		AccountName: "test",
@@ -397,9 +389,9 @@ func TestAppveyorAPI_BranchFilter(t *testing.T) {
 	hBody, _ := json.Marshal(history)
 	bBody, _ := json.Marshal(buildDetail)
 	aBody, _ := json.Marshal(artifacts)
-	mdl.On("/api/projects/test/project/history", &HTTPResponse{StatusCode: 200, Body: hBody})
-	mdl.On("/api/projects/test/project/build/1.0.0", &HTTPResponse{StatusCode: 200, Body: bBody})
-	mdl.On("/api/buildjobs/job-123/artifacts", &HTTPResponse{StatusCode: 200, Body: aBody})
+	mdl.On("/api/projects/test/project/history", resp(200, hBody))
+	mdl.On("/api/projects/test/project/build/1.0.0", resp(200, bBody))
+	mdl.On("/api/buildjobs/job-123/artifacts", resp(200, aBody))
 
 	api := NewAppveyorAPI(config.BasicConfig{
 		AccountName: "test",
@@ -475,10 +467,7 @@ func TestApiJsonAPI_VersionExtraction(t *testing.T) {
 
 	mdl := newMockDownloader()
 	body, _ := json.Marshal(jsonData)
-	mdl.On("/api/versions", &HTTPResponse{
-		StatusCode: 200,
-		Body:       body,
-	})
+	mdl.On("/api/versions", resp(200, body))
 
 	api := NewApiJsonAPI(
 		config.BasicConfig{APIURL: "https://example.com/api/versions"},

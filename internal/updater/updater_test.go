@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -49,7 +50,7 @@ func (m *mockHTTPDownloader) Get(_ context.Context, url string, _ map[string]str
 		},
 	}
 	body, _ := json.Marshal(release)
-	return &api.HTTPResponse{StatusCode: 200, Body: body}, nil
+	return &api.HTTPResponse{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body))}, nil
 }
 
 func (m *mockHTTPDownloader) Post(ctx context.Context, url string, _ []byte, _ map[string]string) (*api.HTTPResponse, error) {
